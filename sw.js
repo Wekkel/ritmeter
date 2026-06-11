@@ -1,7 +1,7 @@
 /* RitMeter service worker — app-shell cachen voor snelle start & offline gebruik.
    Kaarttegels en fonts gaan altijd via het netwerk (die zijn te groot/dynamisch). */
 
-const CACHE = "ritmeter-v1";
+const CACHE = "ritmeter-v2";
 const SHELL = [
   "./",
   "./index.html",
