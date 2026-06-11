@@ -1,5 +1,7 @@
-/* RitMeter service worker — app-shell cachen voor snelle start & offline gebruik.
-   Kaarttegels en fonts gaan altijd via het netwerk (die zijn te groot/dynamisch). */
+/* RitMeter service worker v3
+   - index.html: network-first (altijd nieuwste versie, cache alleen als offline-fallback)
+   - overige eigen bestanden: cache-first voor snelle start
+   - kaarttegels en fonts: altijd via het netwerk */
 
 const CACHE = "ritmeter-v3";
 const SHELL = [
@@ -12,7 +14,12 @@ const SHELL = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      // cache:"reload" = haal vers van de server, negeer de http-cache
+      .then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", e => {
@@ -25,9 +32,21 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;   // extern: gewoon netwerk
 
-  // Alleen eigen bestanden uit de cache serveren (cache-first, met netwerk-fallback)
-  if (url.origin === location.origin) {
+  const isPage = e.request.mode === "navigate" || url.pathname.endsWith("index.html");
+
+  if (isPage) {
+    // network-first: nieuwste app-versie zodra die online staat
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request).then(hit => hit || caches.match("./index.html")))
+    );
+  } else {
+    // cache-first voor statische bestanden
     e.respondWith(
       caches.match(e.request).then(hit =>
         hit || fetch(e.request).then(res => {
@@ -38,5 +57,4 @@ self.addEventListener("fetch", e => {
       )
     );
   }
-  // Externe verzoeken (MapLibre, tiles, fonts): gewoon doorlaten naar het netwerk
 });
