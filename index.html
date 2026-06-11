@@ -88,6 +88,17 @@
   #gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
   #gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
 
+  /* ── kompasroos ── */
+  #rose{position:fixed;top:calc(var(--sat) + 60px);right:14px;z-index:9;
+    width:60px;height:60px;border-radius:50%;background:var(--panel);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);display:none}
+  #rose.show{display:block}
+  body.hud #rose{display:none!important}
+  #rose text{font:700 11px system-ui;fill:var(--muted)}
+  #rose .n{fill:var(--amber)}
+  #roseG{transform-origin:30px 30px;transition:transform .6s linear}
+
   /* ── knoppen links ── */
   .fab{width:42px;height:42px;border-radius:50%;background:var(--panel);
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
@@ -174,8 +185,17 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pageHead .fab{width:38px;height:38px}
   .pageBody{flex:1;overflow-y:auto;padding:14px 16px calc(var(--sab) + 16px)}
-  #histTotals{font-size:13px;color:var(--muted);margin-bottom:10px;
-    font-variant-numeric:tabular-nums}
+  #histActs{display:flex;gap:8px;margin-bottom:14px}
+  .hbtn{flex:1;padding:10px 6px;border-radius:11px;background:#141C25;
+    border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--text)}
+  .hbtn:active{color:var(--amber)}
+  #histTotals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+  .tot{background:#10161E;border:1px solid var(--line);border-radius:13px;
+    padding:10px 6px;text-align:center}
+  .tot span{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .tot b{display:block;font-family:"Chakra Petch",sans-serif;font-size:15px;
+    font-variant-numeric:tabular-nums;margin-top:3px}
+  .tot i{font-style:normal;font-size:10.5px;color:var(--muted)}
   .hrow{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;
     text-align:left;padding:14px 2px;border-bottom:1px solid var(--line)}
   .hrow .l b{display:block;font-size:15px;font-weight:600}
@@ -245,6 +265,17 @@
 
 <div id="gps"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
 
+<div id="rose"><svg viewBox="0 0 60 60">
+  <g id="roseG">
+    <circle cx="30" cy="30" r="24" fill="none" stroke="#22303E"/>
+    <text id="rN" class="n" x="30" y="18" text-anchor="middle">N</text>
+    <text id="rE" x="44" y="34" text-anchor="middle">O</text>
+    <text id="rS" x="30" y="48" text-anchor="middle">Z</text>
+    <text id="rW" x="16" y="34" text-anchor="middle">W</text>
+  </g>
+  <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
+</svg></div>
+
 <div id="trip">
   <div id="stats">
     <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
@@ -268,6 +299,12 @@
     <h2 id="histTitle">Geschiedenis</h2>
   </div>
   <div class="pageBody">
+    <div id="histActs">
+      <button id="bakBtn" class="hbtn"></button>
+      <button id="resBtn" class="hbtn"></button>
+      <button id="gpxAllBtn" class="hbtn"></button>
+      <input type="file" id="resFile" accept=".json,application/json" hidden>
+    </div>
     <div id="histTotals"></div>
     <div id="histList"></div>
     <p id="histEmpty"></p>
@@ -347,7 +384,7 @@
   </div>
 
   <button id="setClose">Sluiten</button>
-  <p style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter v7 · 2026-06-11</p>
+  <p id="appVer" style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter v8</p>
 </div></div>
 
 <div id="notice"><div class="card">
@@ -386,7 +423,9 @@ const I18N = {
     hud_go:"Start HUD", hud_hint:"tik om HUD te sluiten", close:"Sluiten",
     hist:"Geschiedenis",
     hist_empty:"Nog geen opgeslagen ritten. Een rit wordt bewaard zodra je na het stoppen op \u201COpslaan & reset\u201D tikt.",
-    trips:"ritten", total:"totaal",
+    trips:"ritten", total:"totaal", week:"deze week", month:"deze maand",
+    backup:"Back-up", restore:"Herstel", gpx_all:"Alles als GPX",
+    restored:"ritten hersteld", bad_file:"Ongeldig back-upbestand",
     started:"gestart", accuracy:"gps-nauwk.",
     profile:"Hoogteprofiel", no_alt:"Geen bruikbare hoogtedata in deze rit.",
     share_gpx:"Deel als GPX", del:"Verwijder",
@@ -415,7 +454,9 @@ const I18N = {
     hud_go:"Start HUD", hud_hint:"tap to exit HUD", close:"Close",
     hist:"History",
     hist_empty:"No saved trips yet. A trip is stored when you tap \u201CSave & reset\u201D after stopping.",
-    trips:"trips", total:"total",
+    trips:"trips", total:"total", week:"this week", month:"this month",
+    backup:"Backup", restore:"Restore", gpx_all:"All as GPX",
+    restored:"trips restored", bad_file:"Invalid backup file",
     started:"started", accuracy:"gps accuracy",
     profile:"Elevation profile", no_alt:"No usable elevation data in this trip.",
     share_gpx:"Share as GPX", del:"Delete",
@@ -687,6 +728,9 @@ function render(){
     $("hdgVal").textContent = lastBearing == null ? "—"
       : Math.round(lastBearing) + "° " + cardinal(lastBearing);
   }
+  if (showExtra && lastBearing != null)
+    $("roseG").style.transform = `rotate(${-lastBearing}deg)`;
+
   if (hud && hudInfoOn)
     $("hudData").textContent =
       `${fmtDist(trip.dist)} ${useMph ? "mi" : "km"} · ${fmtTime(trip.ms)}`;
@@ -727,10 +771,19 @@ async function openHist(){
   $("histEmpty").style.display = trips.length ? "none" : "block";
   $("histEmpty").textContent = t("hist_empty");
 
-  const totD = trips.reduce((s,r) => s + r.dist, 0);
-  const totT = trips.reduce((s,r) => s + r.ms, 0);
-  $("histTotals").textContent = trips.length
-    ? `${t("total")}: ${trips.length} ${t("trips")} · ${fmtDist(totD)} ${useMph?"mi":"km"} · ${fmtTime(totT)}`
+  const now = new Date();
+  const wk = new Date(now); wk.setHours(0,0,0,0);
+  wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));          // afgelopen maandag
+  const mo = new Date(now.getFullYear(), now.getMonth(), 1);   // eerste van de maand
+  const sum = list => ({ n:list.length,
+    d:list.reduce((s,r) => s + r.dist, 0), t:list.reduce((s,r) => s + r.ms, 0) });
+  const cell = (lbl, s) =>
+    `<div class="tot"><span>${lbl}</span><b>${fmtDist(s.d)} ${useMph?"mi":"km"}</b>` +
+    `<i>${s.n} ${t("trips")} · ${fmtTime(s.t)}</i></div>`;
+  $("histTotals").innerHTML = trips.length
+    ? cell(t("week"),  sum(trips.filter(r => r.start >= wk)))
+    + cell(t("month"), sum(trips.filter(r => r.start >= mo)))
+    + cell(t("total"), sum(trips))
     : "";
 
   for (const r of trips){
@@ -840,33 +893,59 @@ function drawProfile(pts){
 }
 
 /* ── GPX-export & delen ──────────────────────────────────── */
-function toGPX(r){
+const gpxDoc = inner => `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RitMeter" xmlns="http://www.topografix.com/GPX/1/1">
+${inner}
+</gpx>`;
+function trkXML(r){
   const pts = (r.points || []).map(p =>
     `      <trkpt lat="${p.lat}" lon="${p.lon}">` +
     (p.alt != null ? `<ele>${p.alt}</ele>` : "") +
     `<time>${new Date(p.t).toISOString()}</time></trkpt>`).join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="RitMeter" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
+  return `  <trk>
     <name>${r.name}</name>
     <trkseg>
 ${pts}
     </trkseg>
-  </trk>
-</gpx>`;
+  </trk>`;
+}
+const toGPX = r => gpxDoc(trkXML(r));
+async function shareOrDownload(file, title){
+  if (navigator.canShare && navigator.canShare({ files:[file] })){
+    try { await navigator.share({ files:[file], title }); return; } catch(e){}
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 async function shareGPX(){
   const r = await idbGet(detId); if (!r) return;
   const fname = "ritmeter_" + new Date(r.start).toISOString().slice(0,16).replace(/[:T]/g,"-") + ".gpx";
-  const file = new File([toGPX(r)], fname, { type:"application/gpx+xml" });
-  if (navigator.canShare && navigator.canShare({ files:[file] })){
-    try { await navigator.share({ files:[file], title:r.name }); return; } catch(e){}
-  }
-  /* fallback: downloaden */
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(file); a.download = fname;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  shareOrDownload(new File([toGPX(r)], fname, { type:"application/gpx+xml" }), r.name);
+}
+async function gpxAll(){
+  const trips = (await idbAll().catch(() => [])).sort((a,b) => a.id - b.id);
+  if (!trips.length) return;
+  const xml = gpxDoc(trips.map(trkXML).join("\n"));
+  shareOrDownload(new File([xml], "ritmeter_alle_ritten.gpx", { type:"application/gpx+xml" }), "RitMeter");
+}
+async function backup(){
+  const trips = await idbAll().catch(() => []);
+  const data = JSON.stringify({ app:"ritmeter", v:1, exported:new Date().toISOString(), trips });
+  const fname = "ritmeter_backup_" + new Date().toISOString().slice(0,10) + ".json";
+  shareOrDownload(new File([data], fname, { type:"application/json" }), "RitMeter back-up");
+}
+async function restore(file){
+  try{
+    const data = JSON.parse(await file.text());
+    if (!data || data.app !== "ritmeter" || !Array.isArray(data.trips)) throw new Error();
+    let n = 0;
+    for (const r of data.trips)
+      if (r && r.id && typeof r.dist === "number"){ await idbPut(r); n++; }
+    toast(n + " " + t("restored"));
+    openHist();
+  } catch(e){ toast(t("bad_file")); }
 }
 
 /* ── statische teksten & instellingen-UI ─────────────────── */
@@ -889,6 +968,12 @@ function applyLang(){
   $("lblProfile").textContent = t("profile");
   $("shareBtn").textContent = t("share_gpx");
   $("delBtn").textContent = t("del");
+  $("bakBtn").textContent = t("backup");
+  $("resBtn").textContent = t("restore");
+  $("gpxAllBtn").textContent = t("gpx_all");
+  const cd = t("cards");
+  $("rN").textContent = cd[0]; $("rE").textContent = cd[2];
+  $("rS").textContent = cd[4]; $("rW").textContent = cd[6];
   syncSettingsUI(); render();
 }
 function syncSettingsUI(){
@@ -904,6 +989,7 @@ function syncSettingsUI(){
   $("colGreen").classList.toggle("on", digitColor === "green");
   $("dimRange").value = Math.round(dimVal * 100);
   $("extra").classList.toggle("show", showExtra && !hud);
+  $("rose").classList.toggle("show", showExtra && !hud);
   document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
   $("dim").style.opacity = dimVal;
   document.body.classList.toggle("hudinfo", hudInfoOn);
@@ -959,6 +1045,13 @@ $("dimRange").oninput = e => {
 /* geschiedenis */
 $("histBtn").onclick = openHist;
 $("histClose").onclick = () => $("hist").classList.remove("show");
+$("bakBtn").onclick = backup;
+$("gpxAllBtn").onclick = gpxAll;
+$("resBtn").onclick = () => $("resFile").click();
+$("resFile").onchange = e => {
+  if (e.target.files[0]) restore(e.target.files[0]);
+  e.target.value = "";
+};
 $("detBack").onclick = closeDetail;
 $("shareBtn").onclick = shareGPX;
 $("delBtn").onclick = async () => {
@@ -1006,6 +1099,8 @@ async function lockPortrait(){
       await screen.orientation.lock("portrait");
   } catch(e){ /* in een gewone browsertab niet toegestaan: geen probleem */ }
 }
+if (screen.orientation) screen.orientation.addEventListener("change", lockPortrait);
+document.addEventListener("pointerdown", lockPortrait, { once:true });
 
 /* ── meldingen ───────────────────────────────────────────── */
 function showNotice(title, text){
