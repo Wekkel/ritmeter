@@ -23,7 +23,6 @@
     --text:#E9EEF3;
     --muted:#7E8B98;
     --amber:#FFB300;       /* dashboardverlichting */
-    --amber-dim:#8a6200;
     --ok:#3AD673;
     --warn:#FFB300;
     --bad:#FF5252;
@@ -38,7 +37,7 @@
   button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
 
   #map{position:fixed;inset:0;background:#0B0F14}
-  body.focusmode #map{visibility:hidden}
+  body.focusmode #map,body.hud #map{visibility:hidden}
   .maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.6)!important;color:#9aa7b4}
   .maplibregl-ctrl-attrib a{color:#9aa7b4!important}
 
@@ -62,10 +61,22 @@
     color:var(--muted);text-transform:uppercase;padding:4px 14px;border-radius:99px}
   #unitBtn:active{color:var(--amber)}
 
-  body.focusmode #speedCluster{top:50%;transform:translate(-50%,-90%);
+  body.focusmode #speedCluster{top:46%;transform:translate(-50%,-90%);
     background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
   body.focusmode #speedVal{font-size:min(44vw,200px)}
   body.focusmode #unitBtn{font-size:20px}
+
+  /* ── hoogte & kompas ───────────────────────── */
+  #extra{position:fixed;left:50%;transform:translateX(-50%);z-index:9;
+    top:calc(var(--sat) + 156px);display:none;gap:18px;
+    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:99px;padding:8px 18px;
+    font-family:"Chakra Petch",sans-serif;font-size:16px;font-variant-numeric:tabular-nums;
+    color:var(--text);white-space:nowrap}
+  #extra.show{display:flex}
+  #extra .lbl{color:var(--muted);font-family:system-ui,sans-serif;font-size:11px;
+    letter-spacing:.12em;text-transform:uppercase;margin-right:6px;vertical-align:1px}
+  body.focusmode #extra{top:64%}
 
   /* ── gps-status rechtsboven ────────────────── */
   #gps{position:fixed;top:calc(var(--sat) + 14px);right:14px;z-index:10;
@@ -76,12 +87,13 @@
   #gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
   #gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
 
-  /* ── moduswissel linksboven ────────────────── */
-  #modeBtn{position:fixed;top:calc(var(--sat) + 14px);left:14px;z-index:10;
-    width:42px;height:42px;border-radius:50%;background:var(--panel);
+  /* ── knoppen linksboven ────────────────────── */
+  .fab{width:42px;height:42px;border-radius:50%;background:var(--panel);
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
     border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
-  #modeBtn:active{color:var(--amber)}
+  .fab:active{color:var(--amber)}
+  #modeBtn{position:fixed;top:calc(var(--sat) + 14px);left:14px;z-index:10}
+  #setBtn{position:fixed;top:calc(var(--sat) + 66px);left:14px;z-index:10}
 
   /* ── tripbalk onder ────────────────────────── */
   #trip{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 10px);z-index:10;
@@ -101,8 +113,46 @@
   #resetBtn{flex:0 0 92px;color:var(--muted)}
   #resetBtn:disabled{opacity:.35}
 
-  /* ── overlays ──────────────────────────────── */
-  #notice{position:fixed;inset:0;z-index:50;display:none;place-items:center;
+  /* ── HUD-modus: gespiegeld voor voorruit ───── */
+  body.hud #speedCluster{top:50%;transform:translate(-50%,-55%) scaleX(-1);
+    background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  body.hud #speedVal{font-size:min(52vw,240px);color:var(--amber);text-shadow:none}
+  body.hud #unitBtn{font-size:22px;pointer-events:none}
+  body.hud #trip,body.hud #gps,body.hud #modeBtn,body.hud #setBtn,body.hud #extra{display:none!important}
+  #hudExit{position:fixed;inset:0;z-index:40;display:none}
+  body.hud #hudExit{display:block}
+  #hudHint{position:absolute;bottom:calc(var(--sab) + 18px);left:0;right:0;text-align:center;
+    color:var(--muted);font-size:13px;letter-spacing:.08em}
+
+  /* ── instellingen-overlay ──────────────────── */
+  #settings{position:fixed;inset:0;z-index:60;display:none;place-items:end center;
+    background:rgba(5,8,11,.6)}
+  #settings.show{display:grid}
+  #setCard{width:100%;max-width:430px;background:#10161E;border:1px solid var(--line);
+    border-radius:var(--radius) var(--radius) 0 0;
+    padding:20px 20px calc(var(--sab) + 20px)}
+  #setCard h2{margin:0 0 18px;font-family:"Chakra Petch",sans-serif;font-size:19px;
+    letter-spacing:.04em;color:var(--text)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:13px 0;border-top:1px solid var(--line)}
+  .row .info b{display:block;font-size:15px;font-weight:600}
+  .row .info span{font-size:12.5px;color:var(--muted);line-height:1.35;display:block;margin-top:2px}
+  .seg{display:flex;background:#0B0F14;border:1px solid var(--line);border-radius:11px;padding:3px;flex:none}
+  .seg button{padding:7px 16px;border-radius:8px;font-size:13.5px;font-weight:700;color:var(--muted)}
+  .seg button.on{background:var(--amber);color:#1A1200}
+  .switch{flex:none;width:50px;height:29px;border-radius:99px;background:#1A232E;
+    border:1px solid var(--line);position:relative;transition:background .2s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:23px;height:23px;
+    border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+  .switch.on{background:var(--amber)}
+  .switch.on::after{transform:translateX(21px);background:#1A1200}
+  #hudGo{flex:none;padding:9px 18px;border-radius:11px;background:#141C25;
+    border:1px solid var(--line);font-weight:700;font-size:13.5px;color:var(--amber)}
+  #setClose{display:block;width:100%;margin-top:18px;padding:13px 0;border-radius:13px;
+    background:var(--amber);color:#1A1200;font-weight:700;font-size:16px}
+
+  /* ── meldingen ─────────────────────────────── */
+  #notice{position:fixed;inset:0;z-index:70;display:none;place-items:center;
     background:rgba(11,15,20,.92);padding:30px;text-align:center}
   #notice.show{display:grid}
   #notice .card{max-width:340px}
@@ -116,13 +166,21 @@
 
 <div id="map"></div>
 
-<button id="modeBtn" aria-label="Wissel weergave" title="Wissel tussen kaart en alleen snelheid">
+<button id="modeBtn" class="fab" aria-label="view">
   <svg id="modeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/></svg>
+</button>
+<button id="setBtn" class="fab" aria-label="settings">
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 </button>
 
 <div id="speedCluster">
   <div id="speedVal">--</div>
-  <button id="unitBtn" aria-label="Wissel eenheid">km/u</button>
+  <button id="unitBtn" aria-label="unit">km/u</button>
+</div>
+
+<div id="extra">
+  <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
+  <span><span class="lbl" id="lblHdg">koers</span><span id="hdgVal">—</span></span>
 </div>
 
 <div id="gps"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
@@ -130,7 +188,7 @@
 <div id="trip">
   <div id="stats">
     <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
-    <div class="stat"><b id="stTime">0:00</b><span>tijd</span></div>
+    <div class="stat"><b id="stTime">0:00</b><span id="stTimeU">tijd</span></div>
     <div class="stat"><b id="stAvg">0</b><span id="stAvgU">gem km/u</span></div>
     <div class="stat"><b id="stMax">0</b><span id="stMaxU">max km/u</span></div>
   </div>
@@ -140,36 +198,114 @@
   </div>
 </div>
 
+<button id="hudExit"><span id="hudHint"></span></button>
+
+<div id="settings"><div id="setCard">
+  <h2 id="setTitle">Instellingen</h2>
+
+  <div class="row">
+    <div class="info"><b id="lblLang">Taal</b><span id="dscLang">Taal van de app</span></div>
+    <div class="seg">
+      <button id="langNL">NL</button>
+      <button id="langEN">EN</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="info"><b id="lblUnit">Eenheid</b><span id="dscUnit">Snelheid en afstand</span></div>
+    <div class="seg">
+      <button id="unitKm">km/u</button>
+      <button id="unitMi">mph</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="info"><b id="lblExtra">Hoogte &amp; kompas</b><span id="dscExtra">Toon hoogte en rijrichting</span></div>
+    <button id="extraSw" class="switch" role="switch" aria-checked="false"></button>
+  </div>
+
+  <div class="row">
+    <div class="info"><b id="lblHud">HUD-modus</b><span id="dscHud">Gespiegeld beeld voor reflectie in de voorruit. Tik op het scherm om terug te keren.</span></div>
+    <button id="hudGo">Start HUD</button>
+  </div>
+
+  <button id="setClose">Sluiten</button>
+</div></div>
+
 <div id="notice"><div class="card">
-  <h2 id="ntcTitle">Locatie nodig</h2>
-  <p id="ntcText">RitMeter heeft toegang tot je GPS nodig om snelheid en afstand te meten. Geef toestemming wanneer je telefoon erom vraagt.</p>
-  <button id="ntcBtn">Opnieuw proberen</button>
+  <h2 id="ntcTitle"></h2>
+  <p id="ntcText"></p>
+  <button id="ntcBtn"></button>
 </div></div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 "use strict";
 /* ════════════════════════════════════════════════
-   RitMeter v1 — GPS-snelheid, tripmeter & 3D-kaart
+   RitMeter v2 — GPS-snelheid, trip, 3D-kaart,
+   NL/EN, hoogte & kompas, HUD-modus
    ════════════════════════════════════════════════ */
 
 const $ = id => document.getElementById(id);
 const LS = localStorage;
 
+/* ── vertalingen ── */
+const I18N = {
+  nl: {
+    unit_kmh:"km/u", unit_mph:"mph", time:"tijd", avg:"gem", max:"max",
+    start:"Start rit", stop:"Stop", resume:"Hervat", reset:"Reset",
+    alt:"hoogte", hdg:"koers", nofix:"geen fix",
+    set_title:"Instellingen", lang:"Taal", lang_d:"Taal van de app",
+    unit:"Eenheid", unit_d:"Snelheid en afstand",
+    extra:"Hoogte & kompas", extra_d:"Toon hoogte en rijrichting",
+    hud:"HUD-modus", hud_d:"Gespiegeld beeld voor reflectie in de voorruit. Tik op het scherm om terug te keren.",
+    hud_go:"Start HUD", hud_hint:"tik om HUD te sluiten", close:"Sluiten",
+    ntc_need:"Locatie nodig",
+    ntc_need_t:"RitMeter heeft toegang tot je GPS nodig om snelheid en afstand te meten. Geef toestemming wanneer je telefoon erom vraagt.",
+    ntc_deny:"Locatie geweigerd",
+    ntc_deny_t:"Zet locatietoegang voor deze app aan in je browser- of telefooninstellingen en probeer opnieuw.",
+    ntc_nogps:"Geen GPS", ntc_nogps_t:"Deze browser ondersteunt geen locatiebepaling.",
+    retry:"Opnieuw proberen",
+    cards:["N","NO","O","ZO","Z","ZW","W","NW"]
+  },
+  en: {
+    unit_kmh:"km/h", unit_mph:"mph", time:"time", avg:"avg", max:"max",
+    start:"Start trip", stop:"Stop", resume:"Resume", reset:"Reset",
+    alt:"altitude", hdg:"heading", nofix:"no fix",
+    set_title:"Settings", lang:"Language", lang_d:"App language",
+    unit:"Units", unit_d:"Speed and distance",
+    extra:"Altitude & compass", extra_d:"Show altitude and travel direction",
+    hud:"HUD mode", hud_d:"Mirrored display for windshield reflection. Tap the screen to return.",
+    hud_go:"Start HUD", hud_hint:"tap to exit HUD", close:"Close",
+    ntc_need:"Location needed",
+    ntc_need_t:"RitMeter needs access to your GPS to measure speed and distance. Allow access when your phone asks.",
+    ntc_deny:"Location denied",
+    ntc_deny_t:"Enable location access for this app in your browser or phone settings and try again.",
+    ntc_nogps:"No GPS", ntc_nogps_t:"This browser does not support geolocation.",
+    retry:"Try again",
+    cards:["N","NE","E","SE","S","SW","W","NW"]
+  }
+};
+let lang = LS.getItem("rm_lang") || "nl";
+const t = k => I18N[lang][k];
+
 /* ── instellingen & status ── */
-let useMph   = LS.getItem("rm_unit") === "mph";
-let focus    = LS.getItem("rm_focus") === "1";
+let useMph    = LS.getItem("rm_unit") === "mph";
+let focus     = LS.getItem("rm_focus") === "1";
+let showExtra = LS.getItem("rm_extra") === "1";
+let hud       = false;
 let mapReady = false, firstFix = false;
 
 const trip = Object.assign(
-  { running:false, dist:0, ms:0, max:0, startedAt:0 },
+  { running:false, dist:0, ms:0, max:0 },
   JSON.parse(LS.getItem("rm_trip") || "{}"),
-  { running:false, startedAt:0 }            // nooit "lopend" herstarten
+  { running:false }                          // nooit "lopend" herstarten
 );
 
 let lastPos = null;          // laatste geaccepteerde fix voor afstandsmeting
 let dispSpeed = 0;           // gefilterde snelheid in m/s
-let lastBearing = 0;
+let lastBearing = null;      // koers in graden
+let lastAlt = null;          // hoogte in meters
 
 /* ── helpers ── */
 const R = 6371000;
@@ -180,17 +316,21 @@ function haversine(a, b){
             Math.cos(toR(a.latitude)) * Math.cos(toR(b.latitude)) * Math.sin(dLon/2)**2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
+const unitLbl  = () => useMph ? t("unit_mph") : t("unit_kmh");
 const fmtSpeed = ms => Math.round(ms * (useMph ? 2.23694 : 3.6));
-const fmtDist  = m  => useMph ? (m/1609.344).toFixed(2).replace(".",",")
-                              : (m/1000).toFixed(2).replace(".",",");
+const fmtDist  = m  => {
+  const v = useMph ? (m/1609.344).toFixed(2) : (m/1000).toFixed(2);
+  return lang === "nl" ? v.replace(".",",") : v;
+};
 function fmtTime(ms){
   const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60);
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`
            : `${m}:${String(s%60).padStart(2,"0")}`;
 }
+const cardinal = deg => t("cards")[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
 
 /* ── kaart ── */
-let map, marker, markerEl;
+let map, marker;
 function initMap(lon, lat){
   map = new maplibregl.Map({
     container:"map",
@@ -200,30 +340,30 @@ function initMap(lon, lat){
     fadeDuration:0
   });
   map.touchZoomRotate.disableRotation();
-  // marker laag in beeld zetten: rijpositie-perspectief
+  // marker laag in beeld: rijpositie-perspectief
   map.setPadding({ top: Math.round(window.innerHeight * .45) });
 
-  markerEl = document.createElement("div");
-  markerEl.className = "me";
-  markerEl.innerHTML =
+  const el = document.createElement("div");
+  el.className = "me";
+  el.innerHTML =
     `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
-  marker = new maplibregl.Marker({element:markerEl, rotationAlignment:"map"})
+  marker = new maplibregl.Marker({element:el, rotationAlignment:"map"})
             .setLngLat([lon,lat]).addTo(map);
   map.on("load", () => { mapReady = true; });
 }
 
 function updateCamera(lon, lat, bearing){
   marker.setLngLat([lon,lat]);
-  marker.setRotation(bearing);
-  if (!focus && mapReady){
-    map.easeTo({ center:[lon,lat], bearing, duration:600, easing:t=>t });
+  marker.setRotation(bearing ?? 0);
+  if (!focus && !hud && mapReady){
+    map.easeTo({ center:[lon,lat], bearing:bearing ?? map.getBearing(), duration:600, easing:x=>x });
   }
 }
 
 /* ── GPS ── */
 function startGPS(){
   if (!("geolocation" in navigator)){
-    showNotice("Geen GPS", "Deze browser ondersteunt geen locatiebepaling."); return;
+    showNotice(t("ntc_nogps"), t("ntc_nogps_t")); return;
   }
   navigator.geolocation.watchPosition(onFix, onErr,
     { enableHighAccuracy:true, maximumAge:0, timeout:15000 });
@@ -231,7 +371,7 @@ function startGPS(){
 
 function onFix(pos){
   hideNotice();
-  const c = pos.coords, t = pos.timestamp;
+  const c = pos.coords, ts = pos.timestamp;
 
   if (!firstFix){ firstFix = true; initMap(c.longitude, c.latitude); }
 
@@ -240,10 +380,13 @@ function onFix(pos){
   $("gpsDot").className = acc <= 12 ? "ok" : acc <= 30 ? "mid" : "";
   $("gpsTxt").textContent = `±${Math.round(acc)} m`;
 
+  /* hoogte */
+  if (c.altitude != null && !isNaN(c.altitude)) lastAlt = c.altitude;
+
   /* snelheid: voorkeur voor chip-waarde, anders zelf berekenen */
   let v = (c.speed != null && !isNaN(c.speed) && c.speed >= 0) ? c.speed : null;
   if (v === null && lastPos){
-    const dt = (t - lastPos.t) / 1000;
+    const dt = (ts - lastPos.t) / 1000;
     if (dt > 0.3) v = haversine(lastPos.c, c) / dt;
   }
   if (v !== null){
@@ -259,20 +402,20 @@ function onFix(pos){
   if (trip.running && acc <= 35){
     if (lastPos){
       const d  = haversine(lastPos.c, c);
-      const dt = (t - lastPos.t) / 1000;
+      const dt = (ts - lastPos.t) / 1000;
       // accepteer alleen plausibele, echte verplaatsing (geen GPS-jitter of sprongen)
       if (d > Math.min(acc, 12) * 0.6 && (dt <= 0 || d/dt < 70)){
         trip.dist += d;
         if (dispSpeed > trip.max) trip.max = dispSpeed;
-        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t:ts };
       } else if (d > 200){                    // grote sprong: opnieuw verankeren
-        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t:ts };
       }
     } else {
-      lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+      lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t:ts };
     }
   } else {
-    lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+    lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t:ts };
   }
 
   updateCamera(c.longitude, c.latitude, lastBearing);
@@ -280,11 +423,8 @@ function onFix(pos){
 }
 
 function onErr(e){
-  if (e.code === 1)
-    showNotice("Locatie geweigerd",
-      "Zet locatietoegang voor deze app aan in je browser- of telefooninstellingen en probeer opnieuw.");
-  else
-    $("gpsTxt").textContent = "geen fix";
+  if (e.code === 1) showNotice(t("ntc_deny"), t("ntc_deny_t"));
+  else $("gpsTxt").textContent = t("nofix");
 }
 
 /* ── trip-klok ── */
@@ -305,15 +445,53 @@ function render(){
   $("stAvg").textContent = fmtSpeed(avg);
   $("stMax").textContent = fmtSpeed(trip.max);
 
-  const u = useMph ? "mph" : "km/u";
-  $("unitBtn").textContent = u;
+  $("unitBtn").textContent = unitLbl();
   $("stDistU").textContent = useMph ? "mi" : "km";
-  $("stAvgU").textContent  = "gem " + u;
-  $("stMaxU").textContent  = "max " + u;
+  $("stTimeU").textContent = t("time");
+  $("stAvgU").textContent  = t("avg") + " " + unitLbl();
+  $("stMaxU").textContent  = t("max") + " " + unitLbl();
 
-  $("startBtn").textContent = trip.running ? "Stop" : (trip.ms ? "Hervat" : "Start rit");
+  $("startBtn").textContent = trip.running ? t("stop") : (trip.ms ? t("resume") : t("start"));
   $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
+  $("resetBtn").textContent = t("reset");
   $("resetBtn").disabled    = trip.running || !trip.ms;
+
+  /* hoogte & kompas */
+  if (showExtra){
+    $("altVal").textContent = lastAlt == null ? "—"
+      : useMph ? Math.round(lastAlt * 3.28084) + " ft"
+               : Math.round(lastAlt) + " m";
+    $("hdgVal").textContent = lastBearing == null ? "—"
+      : Math.round(lastBearing) + "° " + cardinal(lastBearing);
+  }
+}
+
+/* ── statische teksten & instellingen-UI ── */
+function applyLang(){
+  document.documentElement.lang = lang;
+  $("lblAlt").textContent = t("alt");
+  $("lblHdg").textContent = t("hdg");
+  $("setTitle").textContent = t("set_title");
+  $("lblLang").textContent = t("lang");   $("dscLang").textContent = t("lang_d");
+  $("lblUnit").textContent = t("unit");   $("dscUnit").textContent = t("unit_d");
+  $("lblExtra").textContent = t("extra"); $("dscExtra").textContent = t("extra_d");
+  $("lblHud").textContent = t("hud");     $("dscHud").textContent = t("hud_d");
+  $("hudGo").textContent = t("hud_go");
+  $("hudHint").textContent = t("hud_hint");
+  $("setClose").textContent = t("close");
+  $("ntcBtn").textContent = t("retry");
+  $("unitKm").textContent = I18N[lang].unit_kmh;
+  syncSettingsUI();
+  render();
+}
+function syncSettingsUI(){
+  $("langNL").classList.toggle("on", lang === "nl");
+  $("langEN").classList.toggle("on", lang === "en");
+  $("unitKm").classList.toggle("on", !useMph);
+  $("unitMi").classList.toggle("on",  useMph);
+  $("extraSw").classList.toggle("on", showExtra);
+  $("extraSw").setAttribute("aria-checked", showExtra);
+  $("extra").classList.toggle("show", showExtra && !hud);
 }
 
 /* ── bediening ── */
@@ -328,19 +506,50 @@ $("resetBtn").onclick = () => {
   LS.setItem("rm_trip", JSON.stringify(trip));
   render();
 };
-$("unitBtn").onclick = () => {
-  useMph = !useMph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); render();
-};
+$("unitBtn").onclick = () => setUnit(!useMph);
+function setUnit(mph){
+  useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh");
+  syncSettingsUI(); render();
+}
+$("unitKm").onclick = () => setUnit(false);
+$("unitMi").onclick = () => setUnit(true);
+
 $("modeBtn").onclick = () => {
   focus = !focus; LS.setItem("rm_focus", focus ? "1" : "0"); applyMode();
 };
 function applyMode(){
-  document.body.classList.toggle("focusmode", focus);
+  document.body.classList.toggle("focusmode", focus && !hud);
   $("modeIcon").innerHTML = focus
     ? `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>`   // kaart-icoon
     : `<circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/>`;                  // meter-icoon
-  if (!focus && map) setTimeout(() => map.resize(), 60);
+  if (!focus && !hud && map) setTimeout(() => map.resize(), 60);
 }
+
+/* instellingen */
+$("setBtn").onclick   = () => $("settings").classList.add("show");
+$("setClose").onclick = () => $("settings").classList.remove("show");
+$("settings").onclick = e => { if (e.target === $("settings")) $("settings").classList.remove("show"); };
+$("langNL").onclick = () => { lang = "nl"; LS.setItem("rm_lang", lang); applyLang(); };
+$("langEN").onclick = () => { lang = "en"; LS.setItem("rm_lang", lang); applyLang(); };
+$("extraSw").onclick = () => {
+  showExtra = !showExtra; LS.setItem("rm_extra", showExtra ? "1" : "0");
+  syncSettingsUI(); render();
+};
+
+/* HUD */
+$("hudGo").onclick = () => {
+  $("settings").classList.remove("show");
+  hud = true;
+  document.body.classList.add("hud");
+  document.body.classList.remove("focusmode");
+  syncSettingsUI();
+};
+$("hudExit").onclick = () => {
+  hud = false;
+  document.body.classList.remove("hud");
+  applyMode(); syncSettingsUI();
+  if (!focus && map) setTimeout(() => map.resize(), 60);
+};
 
 /* ── scherm aanhouden ── */
 let wakeLock = null;
@@ -365,7 +574,7 @@ if ("serviceWorker" in navigator)
   navigator.serviceWorker.register("sw.js").catch(()=>{});
 
 /* ── start ── */
-applyMode(); render(); keepAwake(); startGPS();
+applyLang(); applyMode(); keepAwake(); startGPS();
 </script>
 </body>
 </html>
