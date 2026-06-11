@@ -12,21 +12,10 @@ Snelle GPS-snelheidsmeter als PWA: 3D-kaart in rijpositie, grote snelheidsweerga
 | `sw.js` | Service worker: snelle start en offline app-shell |
 | `icon-*.png` | App-iconen |
 
-## Online zetten via GitHub Pages (eenmalig, ±5 minuten)
-
-1. Maak een account op github.com (als je dat nog niet hebt).
-2. Klik rechtsboven op **+** → **New repository**. Naam: bijv. `ritmeter`. Zet hem op **Public** en klik **Create repository**.
-3. Klik op **uploading an existing file**, sleep alle bestanden uit deze map erin en klik **Commit changes**.
-4. Ga naar **Settings** → **Pages**. Bij *Branch* kies je `main` en map `/ (root)`, dan **Save**.
-5. Na 1-2 minuten staat je app live op:
-   `https://JOUWNAAM.github.io/ritmeter/`
-
-Aanpassingen later? Upload gewoon de gewijzigde bestanden opnieuw. Verhoog dan in `sw.js`
-het versienummer (`ritmeter-v1` → `ritmeter-v2`) zodat telefoons de nieuwe versie ophalen.
 
 ## Installeren op je telefoons
 
-**Samsung S24 Ultra (Chrome of Samsung Internet):**
+**Android:**
 open de URL → menu (⋮) → **Toevoegen aan startscherm** / **App installeren**.
 
 **iPhone (moet via Safari):**
