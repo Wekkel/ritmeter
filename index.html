@@ -777,7 +777,7 @@ async function openDetail(id){
         dmapInst.addSource("route", { type:"geojson",
           data:{ type:"Feature", geometry:{ type:"LineString", coordinates:coords } } });
         dmapInst.addLayer({ id:"route", type:"line", source:"route",
-          paint:{ "line-color":"#FFB300", "line-width":4, "line-opacity":.9 } });
+          paint:{ "line-color":"#2D8CFF", "line-width":4, "line-opacity":.9 } });
       });
     }, 60);
     $("dmap").style.display = "block";
@@ -980,15 +980,31 @@ $("hudExit").onclick = () => {
   if (!focus && map) setTimeout(() => map.resize(), 60);
 };
 
-/* ── scherm aanhouden ────────────────────────────────────── */
+/* ── scherm aanhouden (zelfherstellend) ──────────────────── */
 let wakeLock = null;
 async function keepAwake(){
-  try{ if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }
-  catch(e){}
+  if (!("wakeLock" in navigator)) return;
+  if (document.visibilityState !== "visible") return;
+  try{
+    if (wakeLock && !wakeLock.released) return;
+    wakeLock = await navigator.wakeLock.request("screen");
+    /* iOS geeft de lock soms spontaan vrij: meteen klaarzetten voor heraanvraag */
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch(e){ wakeLock = null; /* o.a. geweigerd in energiebesparingsmodus */ }
 }
+setInterval(keepAwake, 20000);                       // vangnet
+document.addEventListener("pointerdown", keepAwake); // elke aanraking
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") keepAwake();
 });
+
+/* ── rotatie vergrendelen op portret (werkt in geïnstalleerde PWA) ── */
+async function lockPortrait(){
+  try{
+    if (screen.orientation && screen.orientation.lock)
+      await screen.orientation.lock("portrait");
+  } catch(e){ /* in een gewone browsertab niet toegestaan: geen probleem */ }
+}
 
 /* ── meldingen ───────────────────────────────────────────── */
 function showNotice(title, text){
@@ -1000,7 +1016,7 @@ $("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
 
 /* ── service worker & start ──────────────────────────────── */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
-applyLang(); applyMode(); keepAwake(); startGPS();
+applyLang(); applyMode(); keepAwake(); lockPortrait(); startGPS();
 </script>
 </body>
 </html>
