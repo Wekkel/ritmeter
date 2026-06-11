@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B0F14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RitMeter">
+<title>RitMeter — GPS snelheid &amp; trip</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F14;
+    --panel:rgba(13,19,26,.82);
+    --line:#22303E;
+    --text:#E9EEF3;
+    --muted:#7E8B98;
+    --amber:#FFB300;       /* dashboardverlichting */
+    --amber-dim:#8a6200;
+    --ok:#3AD673;
+    --warn:#FFB300;
+    --bad:#FF5252;
+    --radius:18px;
+    --sat:env(safe-area-inset-top,0px);
+    --sab:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;touch-action:manipulation;
+    user-select:none;-webkit-user-select:none}
+  button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+
+  #map{position:fixed;inset:0;background:#0B0F14}
+  body.focusmode #map{visibility:hidden}
+  .maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.6)!important;color:#9aa7b4}
+  .maplibregl-ctrl-attrib a{color:#9aa7b4!important}
+
+  /* ── positiemarker ─────────────────────────── */
+  .me{width:46px;height:46px;position:relative}
+  .me::before{content:"";position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,179,0,.35),transparent 70%)}
+  .me svg{position:absolute;inset:8px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+
+  /* ── snelheidscluster boven ────────────────── */
+  #speedCluster{position:fixed;top:calc(var(--sat) + 10px);left:50%;transform:translateX(-50%);
+    z-index:10;background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:8px 26px 12px;text-align:center;min-width:196px;
+    box-shadow:0 6px 24px rgba(0,0,0,.45)}
+  #speedVal{font-family:"Chakra Petch",system-ui,sans-serif;font-weight:700;
+    font-size:72px;line-height:1;letter-spacing:.5px;color:var(--text);
+    font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(255,179,0,.18)}
+  #speedVal.moving{color:var(--amber)}
+  #unitBtn{display:block;margin:2px auto 0;font-size:14px;font-weight:600;letter-spacing:.22em;
+    color:var(--muted);text-transform:uppercase;padding:4px 14px;border-radius:99px}
+  #unitBtn:active{color:var(--amber)}
+
+  body.focusmode #speedCluster{top:50%;transform:translate(-50%,-90%);
+    background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  body.focusmode #speedVal{font-size:min(44vw,200px)}
+  body.focusmode #unitBtn{font-size:20px}
+
+  /* ── gps-status rechtsboven ────────────────── */
+  #gps{position:fixed;top:calc(var(--sat) + 14px);right:14px;z-index:10;
+    display:flex;align-items:center;gap:7px;background:var(--panel);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:99px;padding:7px 13px;
+    font-size:12px;color:var(--muted)}
+  #gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
+  #gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
+
+  /* ── moduswissel linksboven ────────────────── */
+  #modeBtn{position:fixed;top:calc(var(--sat) + 14px);left:14px;z-index:10;
+    width:42px;height:42px;border-radius:50%;background:var(--panel);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+  #modeBtn:active{color:var(--amber)}
+
+  /* ── tripbalk onder ────────────────────────── */
+  #trip{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 10px);z-index:10;
+    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+  #stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;text-align:center}
+  .stat b{display:block;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:21px;
+    font-variant-numeric:tabular-nums;color:var(--text)}
+  .stat span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  #btnRow{display:flex;gap:10px}
+  .btn{flex:1;padding:13px 0;border-radius:13px;font-weight:700;font-size:16px;letter-spacing:.04em;
+    border:1px solid var(--line);background:#141C25;transition:transform .06s}
+  .btn:active{transform:scale(.97)}
+  #startBtn.go{background:var(--amber);border-color:var(--amber);color:#1A1200}
+  #startBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
+  #resetBtn{flex:0 0 92px;color:var(--muted)}
+  #resetBtn:disabled{opacity:.35}
+
+  /* ── overlays ──────────────────────────────── */
+  #notice{position:fixed;inset:0;z-index:50;display:none;place-items:center;
+    background:rgba(11,15,20,.92);padding:30px;text-align:center}
+  #notice.show{display:grid}
+  #notice .card{max-width:340px}
+  #notice h2{font-family:"Chakra Petch",sans-serif;color:var(--amber);margin:0 0 10px}
+  #notice p{color:var(--muted);line-height:1.5;font-size:15px}
+  #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
+    color:#1A1200;font-weight:700}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<button id="modeBtn" aria-label="Wissel weergave" title="Wissel tussen kaart en alleen snelheid">
+  <svg id="modeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/></svg>
+</button>
+
+<div id="speedCluster">
+  <div id="speedVal">--</div>
+  <button id="unitBtn" aria-label="Wissel eenheid">km/u</button>
+</div>
+
+<div id="gps"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
+
+<div id="trip">
+  <div id="stats">
+    <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
+    <div class="stat"><b id="stTime">0:00</b><span>tijd</span></div>
+    <div class="stat"><b id="stAvg">0</b><span id="stAvgU">gem km/u</span></div>
+    <div class="stat"><b id="stMax">0</b><span id="stMaxU">max km/u</span></div>
+  </div>
+  <div id="btnRow">
+    <button id="startBtn" class="btn go">Start rit</button>
+    <button id="resetBtn" class="btn" disabled>Reset</button>
+  </div>
+</div>
+
+<div id="notice"><div class="card">
+  <h2 id="ntcTitle">Locatie nodig</h2>
+  <p id="ntcText">RitMeter heeft toegang tot je GPS nodig om snelheid en afstand te meten. Geef toestemming wanneer je telefoon erom vraagt.</p>
+  <button id="ntcBtn">Opnieuw proberen</button>
+</div></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+"use strict";
+/* ════════════════════════════════════════════════
+   RitMeter v1 — GPS-snelheid, tripmeter & 3D-kaart
+   ════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+const LS = localStorage;
+
+/* ── instellingen & status ── */
+let useMph   = LS.getItem("rm_unit") === "mph";
+let focus    = LS.getItem("rm_focus") === "1";
+let mapReady = false, firstFix = false;
+
+const trip = Object.assign(
+  { running:false, dist:0, ms:0, max:0, startedAt:0 },
+  JSON.parse(LS.getItem("rm_trip") || "{}"),
+  { running:false, startedAt:0 }            // nooit "lopend" herstarten
+);
+
+let lastPos = null;          // laatste geaccepteerde fix voor afstandsmeting
+let dispSpeed = 0;           // gefilterde snelheid in m/s
+let lastBearing = 0;
+
+/* ── helpers ── */
+const R = 6371000;
+function haversine(a, b){
+  const toR = x => x * Math.PI / 180;
+  const dLat = toR(b.latitude - a.latitude), dLon = toR(b.longitude - a.longitude);
+  const s = Math.sin(dLat/2)**2 +
+            Math.cos(toR(a.latitude)) * Math.cos(toR(b.latitude)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+const fmtSpeed = ms => Math.round(ms * (useMph ? 2.23694 : 3.6));
+const fmtDist  = m  => useMph ? (m/1609.344).toFixed(2).replace(".",",")
+                              : (m/1000).toFixed(2).replace(".",",");
+function fmtTime(ms){
+  const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`
+           : `${m}:${String(s%60).padStart(2,"0")}`;
+}
+
+/* ── kaart ── */
+let map, marker, markerEl;
+function initMap(lon, lat){
+  map = new maplibregl.Map({
+    container:"map",
+    style:"https://tiles.openfreemap.org/styles/liberty",
+    center:[lon,lat], zoom:17, pitch:60, bearing:0,
+    attributionControl:{compact:true},
+    fadeDuration:0
+  });
+  map.touchZoomRotate.disableRotation();
+  // marker laag in beeld zetten: rijpositie-perspectief
+  map.setPadding({ top: Math.round(window.innerHeight * .45) });
+
+  markerEl = document.createElement("div");
+  markerEl.className = "me";
+  markerEl.innerHTML =
+    `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
+  marker = new maplibregl.Marker({element:markerEl, rotationAlignment:"map"})
+            .setLngLat([lon,lat]).addTo(map);
+  map.on("load", () => { mapReady = true; });
+}
+
+function updateCamera(lon, lat, bearing){
+  marker.setLngLat([lon,lat]);
+  marker.setRotation(bearing);
+  if (!focus && mapReady){
+    map.easeTo({ center:[lon,lat], bearing, duration:600, easing:t=>t });
+  }
+}
+
+/* ── GPS ── */
+function startGPS(){
+  if (!("geolocation" in navigator)){
+    showNotice("Geen GPS", "Deze browser ondersteunt geen locatiebepaling."); return;
+  }
+  navigator.geolocation.watchPosition(onFix, onErr,
+    { enableHighAccuracy:true, maximumAge:0, timeout:15000 });
+}
+
+function onFix(pos){
+  hideNotice();
+  const c = pos.coords, t = pos.timestamp;
+
+  if (!firstFix){ firstFix = true; initMap(c.longitude, c.latitude); }
+
+  /* GPS-kwaliteit */
+  const acc = c.accuracy ?? 999;
+  $("gpsDot").className = acc <= 12 ? "ok" : acc <= 30 ? "mid" : "";
+  $("gpsTxt").textContent = `±${Math.round(acc)} m`;
+
+  /* snelheid: voorkeur voor chip-waarde, anders zelf berekenen */
+  let v = (c.speed != null && !isNaN(c.speed) && c.speed >= 0) ? c.speed : null;
+  if (v === null && lastPos){
+    const dt = (t - lastPos.t) / 1000;
+    if (dt > 0.3) v = haversine(lastPos.c, c) / dt;
+  }
+  if (v !== null){
+    if (v < 0.7) v = 0;                       // stilstand-ruis wegfilteren
+    dispSpeed = dispSpeed * 0.5 + v * 0.5;    // lichte demping
+    if (dispSpeed < 0.4) dispSpeed = 0;
+  }
+
+  /* koers: alleen bijwerken als we echt bewegen */
+  if (c.heading != null && !isNaN(c.heading) && dispSpeed > 1.1) lastBearing = c.heading;
+
+  /* tripafstand */
+  if (trip.running && acc <= 35){
+    if (lastPos){
+      const d  = haversine(lastPos.c, c);
+      const dt = (t - lastPos.t) / 1000;
+      // accepteer alleen plausibele, echte verplaatsing (geen GPS-jitter of sprongen)
+      if (d > Math.min(acc, 12) * 0.6 && (dt <= 0 || d/dt < 70)){
+        trip.dist += d;
+        if (dispSpeed > trip.max) trip.max = dispSpeed;
+        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+      } else if (d > 200){                    // grote sprong: opnieuw verankeren
+        lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+      }
+    } else {
+      lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+    }
+  } else {
+    lastPos = { c:{latitude:c.latitude, longitude:c.longitude}, t };
+  }
+
+  updateCamera(c.longitude, c.latitude, lastBearing);
+  render();
+}
+
+function onErr(e){
+  if (e.code === 1)
+    showNotice("Locatie geweigerd",
+      "Zet locatietoegang voor deze app aan in je browser- of telefooninstellingen en probeer opnieuw.");
+  else
+    $("gpsTxt").textContent = "geen fix";
+}
+
+/* ── trip-klok ── */
+setInterval(() => {
+  if (trip.running){ trip.ms += 1000; render(); }
+}, 1000);
+setInterval(() => LS.setItem("rm_trip", JSON.stringify(trip)), 5000);
+
+/* ── weergave ── */
+function render(){
+  const sv = $("speedVal");
+  sv.textContent = firstFix ? fmtSpeed(dispSpeed) : "--";
+  sv.classList.toggle("moving", dispSpeed > 0.4);
+
+  $("stDist").textContent = fmtDist(trip.dist);
+  $("stTime").textContent = fmtTime(trip.ms);
+  const avg = trip.ms > 3000 ? trip.dist / (trip.ms/1000) : 0;
+  $("stAvg").textContent = fmtSpeed(avg);
+  $("stMax").textContent = fmtSpeed(trip.max);
+
+  const u = useMph ? "mph" : "km/u";
+  $("unitBtn").textContent = u;
+  $("stDistU").textContent = useMph ? "mi" : "km";
+  $("stAvgU").textContent  = "gem " + u;
+  $("stMaxU").textContent  = "max " + u;
+
+  $("startBtn").textContent = trip.running ? "Stop" : (trip.ms ? "Hervat" : "Start rit");
+  $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
+  $("resetBtn").disabled    = trip.running || !trip.ms;
+}
+
+/* ── bediening ── */
+$("startBtn").onclick = () => {
+  trip.running = !trip.running;
+  if (trip.running) lastPos = null;          // schoon meetanker bij (her)start
+  LS.setItem("rm_trip", JSON.stringify(trip));
+  render();
+};
+$("resetBtn").onclick = () => {
+  Object.assign(trip, { dist:0, ms:0, max:0, running:false });
+  LS.setItem("rm_trip", JSON.stringify(trip));
+  render();
+};
+$("unitBtn").onclick = () => {
+  useMph = !useMph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); render();
+};
+$("modeBtn").onclick = () => {
+  focus = !focus; LS.setItem("rm_focus", focus ? "1" : "0"); applyMode();
+};
+function applyMode(){
+  document.body.classList.toggle("focusmode", focus);
+  $("modeIcon").innerHTML = focus
+    ? `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>`   // kaart-icoon
+    : `<circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/>`;                  // meter-icoon
+  if (!focus && map) setTimeout(() => map.resize(), 60);
+}
+
+/* ── scherm aanhouden ── */
+let wakeLock = null;
+async function keepAwake(){
+  try{ if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }
+  catch(e){ /* niet ondersteund of geweigerd: geen probleem */ }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") keepAwake();
+});
+
+/* ── meldingen ── */
+function showNotice(title, text){
+  $("ntcTitle").textContent = title; $("ntcText").textContent = text;
+  $("notice").classList.add("show");
+}
+function hideNotice(){ $("notice").classList.remove("show"); }
+$("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
+
+/* ── service worker ── */
+if ("serviceWorker" in navigator)
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+/* ── start ── */
+applyMode(); render(); keepAwake(); startGPS();
+</script>
+</body>
+</html>
