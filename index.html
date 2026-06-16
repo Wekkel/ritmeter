@@ -1501,6 +1501,8 @@ async function navComputeRoute(){
     $("navStart").disabled = false;
   } catch(e){
     console.error(e);
+    clearNavRoute();                       // geen oude (bijv. auto-)route laten staan
+    nav.coords = []; nav.cum = []; nav.maneuvers = [];
     $("navInfo").textContent = t("nav_err");
     $("navStart").disabled = true;
   }
@@ -1624,9 +1626,14 @@ function navStartGuidance(){
 }
 function navStop(){
   nav.active = false;
+  nav.coords = []; nav.cum = []; nav.maneuvers = []; nav.mIdx = 0;
+  nav.dest = null; nav.lastNear = null; nav.offSince = null;
   document.body.classList.remove("navigating");
   $("navHud").classList.remove("show");
   clearNavRoute();
+  $("navInfo").textContent = "";
+  $("navStart").disabled = true;
+  $("navSaveFav").style.display = "none";
   navPadding();
 }
 function navArrived(){
@@ -1642,7 +1649,7 @@ function navArrived(){
 /* ── per GPS-fix aangeroepen vanuit onFix() ──────────────── */
 function navOnFix(c){
   navHere = { lat:c.latitude, lon:c.longitude };
-  if (nav.coords.length && map && mapReady && !map.getSource("nav-route")) drawNavRoute();
+  if (nav.active && nav.coords.length && map && mapReady && !map.getSource("nav-route")) drawNavRoute();
   if (!nav.active || !nav.maneuvers.length) return;
 
   const near = nearestIdx(navHere);
@@ -1671,7 +1678,18 @@ function selectDest(item){
   navComputeRoute();
 }
 function openNavPanel(){ navPanelOpenFlag = true; $("navPanel").classList.add("show"); renderFavs(); navPadding(); }
-function closeNavPanel(){ navPanelOpenFlag = false; $("navPanel").classList.remove("show"); navPadding(); }
+function closeNavPanel(){
+  navPanelOpenFlag = false;
+  $("navPanel").classList.remove("show");
+  if (!nav.active){                       // alleen-preview (nog niet gestart) → route weghalen
+    nav.coords = []; nav.cum = []; nav.maneuvers = []; nav.dest = null;
+    clearNavRoute();
+    $("navInfo").textContent = "";
+    $("navStart").disabled = true;
+    $("navSaveFav").style.display = "none";
+  }
+  navPadding();
+}
 
 /* ── event-bindings ──────────────────────────────────────── */
 $("navBtn").onclick = openNavPanel;
