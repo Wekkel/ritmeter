@@ -237,6 +237,124 @@
   #notice p{color:var(--muted);line-height:1.5;font-size:15px}
   #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
     color:#1A1200;font-weight:700}
+/* ═══ navigatie-overlay ═══════════════════════════════════ */
+:root{ --nav:#E000FF; --nav-dark:#3A0A33; }
+
+/* kompas-FAB (vierde knop in de linker rail) */
+#navBtn{position:fixed;top:calc(var(--sat) + 170px);left:14px;z-index:10}
+#navBtn:active{color:var(--nav)}
+
+/* ── zoek-/instelpaneel (bottom sheet) ── */
+#navPanel{position:fixed;left:0;right:0;bottom:0;z-index:55;
+  background:#10161E;border-top:1px solid var(--line);
+  border-radius:var(--radius) var(--radius) 0 0;
+  padding:10px 16px calc(var(--sab) + 16px);
+  max-height:76vh;overflow-y:auto;
+  transform:translateY(110%);transition:transform .28s ease;
+  box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+#navPanel.show{transform:none}
+.navGrip{width:42px;height:5px;border-radius:99px;background:var(--line);
+  margin:2px auto 12px}
+.navTop{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+#navSearch{flex:1;min-width:0;background:#0B0F14;border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;outline:none}
+#navSearch:focus{border-color:var(--nav)}
+.navX{width:40px;height:40px;flex:none;border-radius:12px;background:#141C25;
+  border:1px solid var(--line);font-size:22px;line-height:1;color:var(--muted);
+  display:grid;place-items:center}
+.navX:active{color:var(--nav)}
+
+#navResults:empty,#navFavs:empty{display:none}
+.navRes{width:100%;display:block;text-align:left;padding:11px 12px;
+  border-bottom:1px solid var(--line)}
+.navRes b{display:block;font-size:15px;font-weight:600;color:var(--text)}
+.navRes span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+.navRes:active{background:#141C25}
+.navMsg{color:var(--muted);font-size:13px;padding:10px 2px}
+
+#navFavs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.navChip{display:flex;align-items:center;background:#141C25;border:1px solid var(--line);
+  border-radius:99px;overflow:hidden}
+.navChipGo{padding:9px 6px 9px 14px;font-size:13.5px;font-weight:600;color:var(--text);
+  max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navChipX{padding:9px 12px 9px 6px;font-size:15px;color:var(--muted)}
+.navChipX:active{color:var(--bad)}
+
+.navSeg{display:flex;background:#0B0F14;border:1px solid var(--line);
+  border-radius:12px;padding:3px;margin:12px 0 0;gap:3px}
+.navSeg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;
+  color:var(--muted);white-space:nowrap}
+.navSeg button.on{background:var(--nav);color:#fff}
+
+.navInfo{margin:12px 0;min-height:20px;font-size:14px;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.navInfo b{font-family:"Chakra Petch",sans-serif;font-size:18px;color:var(--text)}
+
+.navBtns{display:flex;gap:10px}
+#navStart{flex:1;padding:14px 0;border-radius:13px;background:var(--nav);
+  color:#fff;font-weight:700;font-size:16px;border:1px solid var(--nav)}
+#navStart:disabled{opacity:.4;background:#141C25;border-color:var(--line);color:var(--muted)}
+#navSaveFav{flex:0 0 auto;width:52px;border-radius:13px;background:#141C25;
+  border:1px solid var(--line);font-size:20px;color:var(--amber);display:none;
+  place-items:center}
+
+/* ── turn-by-turn HUD-balk (bovenin) ── */
+#navHud{position:fixed;top:calc(var(--sat) + 10px);left:10px;right:10px;z-index:30;
+  display:none;align-items:center;gap:14px;
+  background:rgba(13,19,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--nav);border-radius:16px;padding:10px 12px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5)}
+#navHud.show{display:flex}
+#navArrow{flex:none;width:42px;height:42px;display:grid;place-items:center;color:var(--nav)}
+.navHudText{flex:1;min-width:0}
+.navHudText b{display:block;font-family:"Chakra Petch",sans-serif;font-size:26px;
+  line-height:1.05;color:var(--text);font-variant-numeric:tabular-nums}
+.navHudText span{display:block;font-size:12px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navStop{flex:none;width:38px;height:38px;border-radius:50%;background:#2A1313;
+  border:1px solid #5c2727;color:#FF8A8A;font-size:20px;display:grid;place-items:center}
+
+/* bestemmingspin op de kaart */
+.navDest svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
+
+/* zodra er genavigeerd wordt: bestaande UI naar onder, HUD krijgt ruimte bovenin */
+body.navigating #speedCluster{top:calc(var(--sat) + 92px)}
+body.navigating #gps{top:calc(var(--sat) + 92px)}
+body.navigating #modeBtn{top:calc(var(--sat) + 92px)}
+body.navigating #setBtn{top:calc(var(--sat) + 144px)}
+body.navigating #histBtn{top:calc(var(--sat) + 196px)}
+body.navigating #navBtn{top:calc(var(--sat) + 248px)}
+body.navigating #extra,body.navigating #rose{display:none!important}
+
+/* HUD-/focus-modus en navigatie sluiten elkaar uit */
+body.hud #navHud,body.focusmode #navHud{display:none!important}
+body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPanel{
+  display:none!important}
+
+/* ═══ LANDSCAPE: brede panelen naar de zijkanten, kaart vrij ═══ */
+@media (orientation: landscape){
+  /* snelheidscluster compact naar links-boven i.p.v. centraal */
+  #speedCluster{left:14px;transform:none;top:calc(var(--sat) + 10px);
+    min-width:0;padding:6px 18px 8px}
+  #speedVal{font-size:46px}
+  body.navigating #speedCluster{top:calc(var(--sat) + 64px)}
+
+  /* zoekpaneel als linker kolom i.p.v. bottom sheet */
+  #navPanel{left:10px;right:auto;top:calc(var(--sat) + 10px);
+    bottom:calc(var(--sab) + 10px);width:min(380px,44vw);
+    border-radius:var(--radius);border:1px solid var(--line);
+    transform:translateX(-115%)}
+  #navPanel.show{transform:none}
+  .navChipGo{max-width:200px}
+
+  /* HUD-balk rechts-boven, smal — kaart in het midden blijft vrij */
+  #navHud{left:auto;right:14px;top:calc(var(--sat) + 10px);width:min(340px,42vw)}
+  body.navigating #speedCluster{top:calc(var(--sat) + 10px)} /* HUD staat rechts, geen overlap */
+  body.navigating #gps,body.navigating #modeBtn{top:calc(var(--sat) + 10px)}
+  body.navigating #setBtn{top:calc(var(--sat) + 62px)}
+  body.navigating #histBtn{top:calc(var(--sat) + 114px)}
+  body.navigating #navBtn{top:calc(var(--sat) + 166px)}
+}
 </style>
 </head>
 <body>
@@ -251,6 +369,9 @@
 </button>
 <button id="histBtn" class="fab" aria-label="history">
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+</button>
+<button id="navBtn" class="fab" aria-label="navigation">
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="16 8 12 13 8 16 12 11 16 8" fill="currentColor" stroke="none"/></svg>
 </button>
 
 <div id="speedCluster">
@@ -289,6 +410,36 @@
   </div>
 </div>
 
+<!-- turn-by-turn HUD -->
+<div id="navHud">
+  <div id="navArrow"></div>
+  <div class="navHudText"><b id="navDist">—</b><span id="navStreet"></span></div>
+  <button id="navStopBtn" class="navStop" aria-label="stop">×</button>
+</div>
+
+<!-- navigatiepaneel -->
+<div id="navPanel">
+  <div class="navGrip"></div>
+  <div class="navTop">
+    <input id="navSearch" type="search" inputmode="search" autocomplete="off"
+           autocapitalize="off" spellcheck="false" placeholder="Zoek bestemming">
+    <button id="navClose" class="navX" aria-label="close">×</button>
+  </div>
+  <div id="navResults"></div>
+  <div id="navFavs"></div>
+  <div class="navSeg" id="navProfiles">
+    <button data-p="car" class="on">Auto</button>
+    <button data-p="bike">Fiets</button>
+    <button data-p="moped">Bromfiets</button>
+    <button data-p="snor">Snorfiets</button>
+  </div>
+  <div id="navInfo" class="navInfo"></div>
+  <div class="navBtns">
+    <button id="navStart" disabled>Start navigatie</button>
+    <button id="navSaveFav" aria-label="save">★</button>
+  </div>
+</div>
+  
 <div id="hudData"></div>
 <button id="hudExit"><span id="hudHint"></span></button>
 
@@ -436,7 +587,15 @@ const I18N = {
     ntc_deny_t:"Zet locatietoegang voor deze app aan in je browser- of telefooninstellingen en probeer opnieuw.",
     ntc_nogps:"Geen GPS", ntc_nogps_t:"Deze browser ondersteunt geen locatiebepaling.",
     retry:"Opnieuw proberen",
-    cards:["N","NO","O","ZO","Z","ZW","W","NW"]
+    cards:["N","NO","O","ZO","Z","ZW","W","NW"],
+    nav_search:"Zoek bestemming", p_car:"Auto", p_bike:"Fiets", p_moped:"Bromfiets",
+    p_snor:"Snorfiets", eta:"ETA", del:"Verwijder",
+    nav_start:"Start navigatie", nav_calc:"Route berekenen\u2026",
+    nav_err:"Kon route niet bepalen", nav_none:"Geen resultaten",
+    nav_no_favs:"Nog geen opgeslagen locaties", nav_wait_gps:"Wachten op GPS\u2026",
+    nav_rerouted:"Route herberekend", nav_arrived:"Aangekomen",
+    nav_fav_saved:"Locatie opgeslagen", nav_fav_full:"Maximaal 5 locaties",
+    eta_hr:"u", eta_min:"min"
   },
   en: {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
@@ -467,7 +626,15 @@ const I18N = {
     ntc_deny_t:"Enable location access for this app in your browser or phone settings and try again.",
     ntc_nogps:"No GPS", ntc_nogps_t:"This browser does not support geolocation.",
     retry:"Try again",
-    cards:["N","NE","E","SE","S","SW","W","NW"]
+    cards:["N","NE","E","SE","S","SW","W","NW"],
+    nav_search:"Search destination", p_car:"Car", p_bike:"Bike", p_moped:"Moped",
+    p_snor:"Light moped", eta:"ETA", del:"Delete",
+    nav_start:"Start navigation", nav_calc:"Calculating route\u2026",
+    nav_err:"Could not find a route", nav_none:"No results",
+    nav_no_favs:"No saved places yet", nav_wait_gps:"Waiting for GPS\u2026",
+    nav_rerouted:"Route recalculated", nav_arrived:"Arrived",
+    nav_fav_saved:"Place saved", nav_fav_full:"Maximum of 5 places",
+    eta_hr:"hr", eta_min:"min"
   }
 };
 let lang = LS.getItem("rm_lang") || "nl";
@@ -671,6 +838,7 @@ function onFix(pos){
 
   updateCamera(c.longitude, c.latitude, lastBearing);
   render();
+  navOnFix(c);   // navigatie-overlay (gebruikt c = pos.coords)
 }
 
 function onErr(e){
@@ -974,6 +1142,12 @@ function applyLang(){
   const cd = t("cards");
   $("rN").textContent = cd[0]; $("rE").textContent = cd[2];
   $("rS").textContent = cd[4]; $("rW").textContent = cd[6];
+  $("navSearch").placeholder = t("nav_search");
+  $("navStart").textContent  = t("nav_start");
+  { const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
+    document.querySelectorAll("#navProfiles button")
+      .forEach(b => b.textContent = pl[b.dataset.p]); }
+  if (typeof renderFavs === "function") renderFavs();
   syncSettingsUI(); render();
 }
 function syncSettingsUI(){
@@ -1113,6 +1287,425 @@ $("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
 /* ── service worker & start ──────────────────────────────── */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 applyLang(); applyMode(); keepAwake(); lockPortrait(); startGPS();
+
+  /* ═══════════════════════════════════════════════════════════
+   RitMeter — navigatiemodule (overlay)
+   - Photon geocoding + BRouter routing (GeoJSON)
+   - afslagen afgeleid uit route-geometrie (links/rechts/aankomst)
+   - off-route-detectie met gedebouncede herberekening
+   - favorieten in localStorage (rm_fav_nav, max 5)
+   ═══════════════════════════════════════════════════════════ */
+
+const PHOTON = "https://photon.komoot.io/api/";
+const BROUTER = "https://brouter.de/brouter";
+const PROFILE_MAP = { car:"car-fast", bike:"trekking", moped:"moped", snor:"trekking" };
+/* km/u: cap = realistische bovengrens, def = vaste schatting bij onbruikbare API-tijd */
+const SPEED = { car:{cap:140,def:60}, bike:{cap:35,def:18},
+                moped:{cap:50,def:40}, snor:{cap:30,def:25} };
+
+const nav = {
+  active:false, profile:"car", dest:null,
+  coords:[], cum:[], maneuvers:[], mIdx:0,
+  distM:0, etaS:0, vAvg:8, destMarker:null,
+  lastNear:null, offSince:null, rerouting:false
+};
+let navHere = null;                 // laatst bekende GPS-positie {lat,lon}
+let navPanelOpenFlag = false;
+let geoTimer = null, geoSeq = 0;
+
+/* ── geo-helpers ─────────────────────────────────────────── */
+function brg(a, b){                 // peiling a→b in graden (0=N, 90=O)
+  const toR = x => x*Math.PI/180, toD = x => x*180/Math.PI;
+  const y = Math.sin(toR(b.lon-a.lon)) * Math.cos(toR(b.lat));
+  const x = Math.cos(toR(a.lat))*Math.sin(toR(b.lat)) -
+            Math.sin(toR(a.lat))*Math.cos(toR(b.lat))*Math.cos(toR(b.lon-a.lon));
+  return (toD(Math.atan2(y, x)) + 360) % 360;
+}
+/* afstand punt→lijnsegment (meters), lokaal vlak rond p */
+function segDist(p, a, b){
+  const latR = p.lat*Math.PI/180;
+  const mLat = 111320, mLon = 111320*Math.cos(latR);
+  const ax=(a.lon-p.lon)*mLon, ay=(a.lat-p.lat)*mLat;
+  const bx=(b.lon-p.lon)*mLon, by=(b.lat-p.lat)*mLat;
+  const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
+  let t = L2>0 ? -((ax*dx+ay*dy)/L2) : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(ax+t*dx, ay+t*dy);
+}
+
+/* significante knooppunten (afslagen) uit de routegeometrie.
+   Look-back/-ahead over ~18 m dempt flauwe bochten weg, zodat alleen
+   echte richtingsveranderingen (>=35°) een afslag worden. */
+function detectManeuvers(pts, cum){
+  const LOOK = 18, TURN_MIN = 35, MERGE = 25, out = [];
+  for (let i = 1; i < pts.length-1; i++){
+    let b = i; while (b > 0 && cum[i]-cum[b] < LOOK) b--;
+    let f = i; while (f < pts.length-1 && cum[f]-cum[i] < LOOK) f++;
+    if (b === i || f === i) continue;
+    let d = brg(pts[i], pts[f]) - brg(pts[b], pts[i]);
+    while (d > 180) d -= 360;  while (d < -180) d += 360;
+    if (Math.abs(d) >= TURN_MIN){
+      const last = out[out.length-1];
+      if (last && cum[i]-last.dist < MERGE){
+        if (Math.abs(d) > Math.abs(last.turn)){
+          last.i = i; last.lat = pts[i].lat; last.lon = pts[i].lon;
+          last.turn = d; last.dist = cum[i];
+        }
+      } else out.push({ i, lat:pts[i].lat, lon:pts[i].lon, turn:d, dist:cum[i] });
+    }
+  }
+  return out;
+}
+
+/* dichtstbijzijnde route-knooppunt t.o.v. positie (gevensterd voor snelheid) */
+function nearestIdx(here){
+  const n = nav.coords.length;
+  let lo = 0, hi = n;
+  if (nav.lastNear != null){ lo = Math.max(0, nav.lastNear-30); hi = Math.min(n, nav.lastNear+120); }
+  let best = lo, bd = Infinity;
+  for (let i = lo; i < hi; i++){
+    const d = hv(here, nav.coords[i]);
+    if (d < bd){ bd = d; best = i; }
+  }
+  nav.lastNear = best;
+  return { idx:best, dist:bd };
+}
+function offRouteDist(here, nearIdx){
+  let best = Infinity;
+  for (let i = Math.max(0, nearIdx-1); i < Math.min(nav.coords.length-1, nearIdx+1); i++)
+    best = Math.min(best, segDist(here, nav.coords[i], nav.coords[i+1]));
+  return best === Infinity ? hv(here, nav.coords[nearIdx] || here) : best;
+}
+
+/* ── favorieten (localStorage, max 5) ────────────────────── */
+function favGet(){ try { return JSON.parse(LS.getItem("rm_fav_nav") || "[]"); } catch { return []; } }
+function favSave(list){ LS.setItem("rm_fav_nav", JSON.stringify(list.slice(0,5))); renderFavs(); }
+function favAdd(item){
+  let list = favGet().filter(f =>
+    !(Math.abs(f.lat-item.lat) < 1e-5 && Math.abs(f.lon-item.lon) < 1e-5));
+  if (list.length >= 5){ toast(t("nav_fav_full")); list = list.slice(0,4); }
+  list.unshift({ name:item.name, lat:item.lat, lon:item.lon });
+  favSave(list);
+  toast(t("nav_fav_saved"));
+}
+function favDel(idx){ const list = favGet(); list.splice(idx,1); favSave(list); }
+function renderFavs(){
+  const box = $("navFavs"); if (!box) return;
+  const list = favGet();
+  box.innerHTML = "";
+  if (!list.length){ const m=document.createElement("div"); m.className="navMsg";
+    m.textContent = t("nav_no_favs"); box.appendChild(m); return; }
+  list.forEach((f, idx) => {
+    const chip = document.createElement("div"); chip.className = "navChip";
+    const go = document.createElement("button"); go.className = "navChipGo";
+    go.textContent = f.name.split(",")[0]; go.onclick = () => selectDest(f);
+    const del = document.createElement("button"); del.className = "navChipX";
+    del.textContent = "\u00D7"; del.setAttribute("aria-label", t("del"));
+    del.onclick = e => { e.stopPropagation(); favDel(idx); };
+    chip.append(go, del); box.appendChild(chip);
+  });
+}
+
+/* ── geocoding (Photon) ──────────────────────────────────── */
+function photonLabel(p){
+  const a = [];
+  if (p.name) a.push(p.name);
+  const street = p.street ? p.street + (p.housenumber ? " "+p.housenumber : "") : null;
+  if (street && street !== p.name) a.push(street);
+  const city = p.city || p.town || p.village || p.county;
+  if (city) a.push(city + (p.postcode ? " "+p.postcode : ""));
+  if (p.state && !city) a.push(p.state);
+  if (p.country) a.push(p.country);
+  return a.filter(Boolean).join(", ") || (p.osm_value || "?");
+}
+async function geoSearch(q){
+  const seq = ++geoSeq;
+  const box = $("navResults");
+  box.innerHTML = `<div class="navMsg">${t("nav_calc")}</div>`;
+  let url = `${PHOTON}?q=${encodeURIComponent(q)}&limit=6`;
+  if (navHere) url += `&lat=${navHere.lat.toFixed(4)}&lon=${navHere.lon.toFixed(4)}`;
+  try{
+    const res = await fetch(url);
+    const j = await res.json();
+    if (seq !== geoSeq) return;                 // verouderd antwoord
+    const items = (j.features || [])
+      .filter(f => f.geometry && f.geometry.coordinates)
+      .map(f => ({ name: photonLabel(f.properties || {}),
+                   lat: +f.geometry.coordinates[1], lon: +f.geometry.coordinates[0] }));
+    renderResults(items);
+  } catch(e){
+    if (seq === geoSeq){ box.innerHTML = ""; const m=document.createElement("div");
+      m.className="navMsg"; m.textContent = t("nav_err"); box.appendChild(m); }
+  }
+}
+function renderResults(items){
+  const box = $("navResults"); box.innerHTML = "";
+  if (!items.length){ const m=document.createElement("div"); m.className="navMsg";
+    m.textContent = t("nav_none"); box.appendChild(m); return; }
+  items.forEach(it => {
+    const b = document.createElement("button"); b.className = "navRes";
+    const nm = document.createElement("b"); nm.textContent = it.name.split(",")[0];
+    const sub = document.createElement("span");
+    sub.textContent = it.name.split(",").slice(1).join(",").trim();
+    b.append(nm, sub); b.onclick = () => selectDest(it);
+    box.appendChild(b);
+  });
+}
+
+/* ── routing (BRouter) ───────────────────────────────────── */
+function computeEta(distM, apiTimeS, mode){
+  const s = SPEED[mode] || SPEED.bike;
+  if (mode === "snor") return distM / (25/3.6);          // altijd vaste 25 km/u
+  if (!(apiTimeS > 0)) return distM / (s.def/3.6);        // geen API-tijd
+  const v = distM / apiTimeS * 3.6;                       // km/u volgens API
+  if (v > s.cap || v < 3) return distM / (s.def/3.6);     // onrealistisch → vaste schatting
+  return apiTimeS;
+}
+async function fetchRoute(o, d, mode){
+  const prof = PROFILE_MAP[mode] || "trekking";
+  const url = `${BROUTER}?lonlats=${o.lon.toFixed(6)},${o.lat.toFixed(6)}|` +
+              `${d.lon.toFixed(6)},${d.lat.toFixed(6)}` +
+              `&profile=${prof}&alternativeidx=0&format=geojson&exportWaypoints=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("brouter " + res.status);
+  const j = await res.json();
+  const feat = (j.features || []).find(f => f.geometry && f.geometry.type === "LineString");
+  if (!feat || !feat.geometry.coordinates.length) throw new Error("geen route");
+  const coords = feat.geometry.coordinates.map(c => ({ lon:+c[0], lat:+c[1] }));
+  const p = feat.properties || {};
+  let distM = parseFloat(p["track-length"]);
+  if (!(distM > 0)){ distM = 0; for (let i=1;i<coords.length;i++) distM += hv(coords[i-1], coords[i]); }
+  return { coords, distM, etaS: computeEta(distM, parseFloat(p["total-time"]), mode) };
+}
+function applyRoute(r){
+  nav.coords = r.coords;
+  nav.cum = [0];
+  for (let i = 1; i < r.coords.length; i++) nav.cum[i] = nav.cum[i-1] + hv(r.coords[i-1], r.coords[i]);
+  nav.maneuvers = detectManeuvers(r.coords, nav.cum);
+  const last = r.coords[r.coords.length-1];
+  nav.maneuvers.push({ i:r.coords.length-1, lat:last.lat, lon:last.lon,
+                       turn:0, dist:nav.cum[nav.cum.length-1], arrive:true });
+  nav.distM = r.distM; nav.etaS = r.etaS;
+  nav.vAvg = r.etaS > 0 ? r.distM / r.etaS : (SPEED[nav.profile].def/3.6);
+  nav.mIdx = 0; nav.lastNear = null; nav.offSince = null;
+  drawNavRoute();
+}
+async function navComputeRoute(){
+  if (!nav.dest) return;
+  if (!navHere){ $("navInfo").textContent = t("nav_wait_gps"); return; }
+  $("navInfo").textContent = t("nav_calc");
+  $("navStart").disabled = true;
+  try{
+    applyRoute(await fetchRoute(navHere, nav.dest, nav.profile));
+    $("navInfo").innerHTML = `<b>${fmtNavDist(nav.distM)}</b> &middot; ${t("eta")} ${fmtEta(nav.etaS)}`;
+    $("navStart").disabled = false;
+  } catch(e){
+    console.error(e);
+    $("navInfo").textContent = t("nav_err");
+    $("navStart").disabled = true;
+  }
+}
+async function navReroute(){
+  if (!navHere || nav.rerouting) return;
+  nav.rerouting = true;
+  try{ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile)); toast(t("nav_rerouted")); }
+  catch(e){ /* oude route behouden */ }
+  finally{ nav.rerouting = false; nav.offSince = null; }
+}
+
+/* ── route + bestemming op de hoofdkaart ─────────────────── */
+function drawNavRoute(){
+  if (!map || !mapReady || !nav.coords.length) return;
+  const data = { type:"Feature", properties:{},
+    geometry:{ type:"LineString", coordinates: nav.coords.map(p => [p.lon, p.lat]) } };
+  if (map.getSource("nav-route")) map.getSource("nav-route").setData(data);
+  else {
+    map.addSource("nav-route", { type:"geojson", data });
+    map.addLayer({ id:"nav-route-casing", type:"line", source:"nav-route",
+      layout:{ "line-cap":"round", "line-join":"round" },
+      paint:{ "line-color":"var(--nav-dark)".replace("var(--nav-dark)","#3A0A33"),
+              "line-width":11, "line-opacity":.95 } });
+    map.addLayer({ id:"nav-route-line", type:"line", source:"nav-route",
+      layout:{ "line-cap":"round", "line-join":"round" },
+      paint:{ "line-color":"#E000FF", "line-width":6, "line-opacity":.95 } });
+  }
+  if (!nav.destMarker){
+    const el = document.createElement("div"); el.className = "navDest";
+    el.innerHTML = `<svg width="30" height="38" viewBox="0 0 24 30"><path d="M12 0a10 10 0 0 0-10 10c0 7 10 20 10 20s10-13 10-20A10 10 0 0 0 12 0z" fill="#E000FF" stroke="#0B0F14" stroke-width="1.5"/><circle cx="12" cy="10" r="4" fill="#0B0F14"/></svg>`;
+    nav.destMarker = new maplibregl.Marker({ element:el, anchor:"bottom" })
+      .setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
+  } else nav.destMarker.setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
+}
+function clearNavRoute(){
+  if (map){
+    for (const id of ["nav-route-line","nav-route-casing"]) if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource("nav-route")) map.removeSource("nav-route");
+  }
+  if (nav.destMarker){ nav.destMarker.remove(); nav.destMarker = null; }
+}
+
+/* ── camera-padding: panelen ontwijken, kaart blijft zichtbaar ── */
+function navPanelOpen(){ return navPanelOpenFlag; }
+function navPadding(){
+  if (!map || !mapReady) return;
+  const land = window.matchMedia("(orientation: landscape)").matches;
+  let pad;
+  if (land){
+    const left = navPanelOpen() ? Math.min(380, Math.round(window.innerWidth*0.44)) + 20 : 130;
+    pad = { top:64, bottom:Math.round(window.innerHeight*0.10)+20, left, right:60 };
+  } else {
+    const top = Math.round((document.body.classList.contains("navigating") ? 0.42 : 0.45) * window.innerHeight);
+    const bottom = navPanelOpen() ? Math.round(window.innerHeight*0.40) : 120;
+    pad = { top, bottom, left:24, right:24 };
+  }
+  map.setPadding(pad);
+  if (marker) map.easeTo({ center: marker.getLngLat(), duration:300 });
+}
+
+/* ── HUD-weergave ────────────────────────────────────────── */
+function setArrow(type){
+  const b = '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">';
+  const I = {
+    straight:b+'<path d="M12 20V5"/><path d="M6 11l6-6 6 6"/></svg>',
+    left:    b+'<path d="M20 18h-7a4 4 0 0 1-4-4V6"/><path d="M5 10l4-4 4 4"/></svg>',
+    right:   b+'<path d="M4 18h7a4 4 0 0 0 4-4V6"/><path d="M19 10l-4-4-4 4"/></svg>',
+    arrive:  b+'<circle cx="12" cy="10" r="2.5"/><path d="M12 22s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12z"/></svg>'
+  };
+  $("navArrow").innerHTML = I[type] || I.straight;
+}
+function turnType(m){
+  if (!m) return "straight";
+  if (m.arrive) return "arrive";
+  return m.turn > 0 ? "right" : "left";
+}
+function fmtNavDist(m){
+  if (useMph){
+    const ft = m*3.28084;
+    if (ft < 1000) return (Math.round(ft/10)*10) + " ft";
+    const mi = m/1609.344;
+    return (lang === "nl" ? mi.toFixed(1).replace(".",",") : mi.toFixed(1)) + " mi";
+  }
+  if (m < 1000) return (Math.round(m/10)*10) + " m";
+  const km = m/1000;
+  return (lang === "nl" ? km.toFixed(1).replace(".",",") : km.toFixed(1)) + " km";
+}
+function fmtEta(s){
+  s = Math.round(s);
+  const h = Math.floor(s/3600), m = Math.round((s % 3600)/60);
+  return h ? `${h} ${t("eta_hr")} ${m} ${t("eta_min")}`
+           : `${Math.max(1, m)} ${t("eta_min")}`;
+}
+function updateNavHud(){
+  const m = nav.maneuvers[nav.mIdx]; if (!m || !navHere) return;
+  setArrow(turnType(m));
+  $("navDist").textContent = fmtNavDist(hv(navHere, m));
+  const rem = Math.max(0, nav.distM - (nav.cum[nav.lastNear] || 0));
+  const name = nav.dest ? nav.dest.name.split(",")[0] : "";
+  $("navStreet").textContent =
+    (m.arrive ? t("nav_arrived") : name) + " \u00B7 " +
+    fmtNavDist(rem) + " \u00B7 " + fmtEta(rem / (nav.vAvg || 8));
+}
+
+/* ── start / stop / aankomst ─────────────────────────────── */
+function navStartGuidance(){
+  if (!nav.coords.length) return;
+  if (focus){ focus = false; LS.setItem("rm_focus","0"); }
+  if (hud){ hud = false; document.body.classList.remove("hud"); }
+  applyMode();                                  // verwijdert focusmode, kaart zichtbaar + resize
+  syncSettingsUI();
+  nav.active = true; nav.mIdx = 0; nav.lastNear = null; nav.offSince = null;
+  document.body.classList.add("navigating");
+  closeNavPanel();
+  $("navHud").classList.add("show");
+  drawNavRoute();
+  setArrow(turnType(nav.maneuvers[0]));
+  if (map) setTimeout(() => map.resize(), 60);
+  navPadding(); render();
+}
+function navStop(){
+  nav.active = false;
+  document.body.classList.remove("navigating");
+  $("navHud").classList.remove("show");
+  clearNavRoute();
+  navPadding();
+}
+function navArrived(){
+  toast(t("nav_arrived"));
+  setArrow("arrive");
+  $("navDist").textContent = fmtNavDist(0);
+  $("navStreet").textContent = t("nav_arrived");
+  nav.active = false;
+  document.body.classList.remove("navigating");
+  setTimeout(() => { $("navHud").classList.remove("show"); clearNavRoute(); navPadding(); }, 5000);
+}
+
+/* ── per GPS-fix aangeroepen vanuit onFix() ──────────────── */
+function navOnFix(c){
+  navHere = { lat:c.latitude, lon:c.longitude };
+  if (nav.coords.length && map && mapReady && !map.getSource("nav-route")) drawNavRoute();
+  if (!nav.active || !nav.maneuvers.length) return;
+
+  const near = nearestIdx(navHere);
+  /* schuif door naar de eerstvolgende afslag vóór ons */
+  while (nav.mIdx < nav.maneuvers.length-1 && nav.maneuvers[nav.mIdx].i <= near.idx) nav.mIdx++;
+  const m = nav.maneuvers[nav.mIdx];
+  const dToM = hv(navHere, m);                  // afstand tot eerstvolgend knooppunt (haversine)
+
+  if (m.arrive && dToM < 25){ navArrived(); return; }
+  updateNavHud();
+
+  /* off-route → na 8 s gedebounced herberekenen */
+  const off = offRouteDist(navHere, near.idx);
+  if (off > 55){
+    if (nav.offSince === null) nav.offSince = Date.now();
+    else if (Date.now()-nav.offSince > 8000 && !nav.rerouting){ nav.offSince = Date.now(); navReroute(); }
+  } else nav.offSince = null;
+}
+
+/* ── selecteren & paneelbediening ────────────────────────── */
+function selectDest(item){
+  nav.dest = item;
+  $("navSearch").value = item.name.split(",")[0];
+  $("navResults").innerHTML = "";
+  $("navSaveFav").style.display = "grid";
+  navComputeRoute();
+}
+function openNavPanel(){ navPanelOpenFlag = true; $("navPanel").classList.add("show"); renderFavs(); navPadding(); }
+function closeNavPanel(){ navPanelOpenFlag = false; $("navPanel").classList.remove("show"); navPadding(); }
+
+/* ── event-bindings ──────────────────────────────────────── */
+$("navBtn").onclick = openNavPanel;
+$("navClose").onclick = closeNavPanel;
+$("navStopBtn").onclick = navStop;
+$("navStart").onclick = navStartGuidance;
+$("navSaveFav").onclick = () => { if (nav.dest) favAdd(nav.dest); };
+$("navSearch").addEventListener("input", e => {
+  clearTimeout(geoTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3){ $("navResults").innerHTML = ""; return; }
+  geoTimer = setTimeout(() => geoSearch(q), 350);   // throttle: respecteer Photon fair-use
+});
+$("navSearch").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ clearTimeout(geoTimer);
+    const q = e.target.value.trim(); if (q.length >= 2) geoSearch(q); }
+});
+document.querySelectorAll("#navProfiles button").forEach(b => {
+  b.onclick = () => {
+    nav.profile = b.dataset.p;
+    document.querySelectorAll("#navProfiles button").forEach(x => x.classList.toggle("on", x === b));
+    if (nav.dest) navComputeRoute();
+  };
+});
+window.addEventListener("resize", () => { if (map){ map.resize(); navPadding(); } });
+if (screen.orientation)
+  screen.orientation.addEventListener("change",
+    () => setTimeout(() => { if (map){ map.resize(); navPadding(); } }, 250));
+
+/* labels/placeholders meteen zetten (applyLang draaide al bij init) */
+$("navSearch").placeholder = t("nav_search");
+$("navStart").textContent  = t("nav_start");
+(function(){ const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
+  document.querySelectorAll("#navProfiles button").forEach(b => b.textContent = pl[b.dataset.p]); })();
 </script>
 </body>
 </html>
