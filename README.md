@@ -1,65 +1,63 @@
 # RitMeter 🏍️
 
-Snelle GPS-snelheidsmeter als PWA: 3D-kaart in rijpositie, grote snelheidsweergave
-(km/u of mph) en een tripmeter met start/stop. Werkt op Android én iPhone, zonder app store.
+A fast GPS speedometer as a PWA: a 3D map oriented to your direction of travel, a large
+speed readout (km/h or mph), a trip meter with start/stop, and point-to-point navigation.
+Works on Android and iPhone, no app store required.
 
-## Bestanden
+## Files
 
-| Bestand | Functie |
+| File | Purpose |
 |---|---|
-| `index.html` | De complete app (HTML + CSS + JavaScript) |
-| `manifest.json` | Maakt de app installeerbaar |
-| `sw.js` | Service worker: snelle start en offline app-shell |
-| `icon-*.png` | App-iconen |
+| `index.html` | The complete app (HTML + CSS + JavaScript) |
+| `manifest.json` | Makes the app installable |
+| `sw.js` | Service worker: fast start and offline app shell |
+| `icon-*.png` | App icons |
 
-## Online zetten via GitHub Pages (eenmalig, ±5 minuten)
+## Installing on your phones
 
-1. Maak een account op github.com (als je dat nog niet hebt).
-2. Klik rechtsboven op **+** → **New repository**. Naam: bijv. `ritmeter`. Zet hem op **Public** en klik **Create repository**.
-3. Klik op **uploading an existing file**, sleep alle bestanden uit deze map erin en klik **Commit changes**.
-4. Ga naar **Settings** → **Pages**. Bij *Branch* kies je `main` en map `/ (root)`, dan **Save**.
-5. Na 1-2 minuten staat je app live op:
-   `https://JOUWNAAM.github.io/ritmeter/`
+**Samsung S24 Ultra (Chrome or Samsung Internet):**
+open the URL → menu (⋮) → **Add to Home screen** / **Install app**.
 
-Aanpassingen later? Upload gewoon de gewijzigde bestanden opnieuw. Verhoog dan in `sw.js`
-het versienummer (`ritmeter-v1` → `ritmeter-v2`) zodat telefoons de nieuwe versie ophalen.
+**iPhone (must be via Safari):**
+open the URL → share button (square with arrow) → **Add to Home Screen**.
 
-## Installeren op je telefoons
+On first launch the phone asks for location permission — choose **Allow while using the app**.
 
-**Samsung S24 Ultra (Chrome of Samsung Internet):**
-open de URL → menu (⋮) → **Toevoegen aan startscherm** / **App installeren**.
+## Location permission on iPhone (Safari)
 
-**iPhone (moet via Safari):**
-open de URL → deelknop (vierkant met pijl) → **Zet op beginscherm**.
+Permission works in three layers:
 
-Bij de eerste start vraagt de telefoon om locatietoestemming — kies **Toestaan tijdens gebruik**.
+1. **System**: Settings → Privacy & Security → Location Services **on**, and in the list set **Safari Websites** to *While Using the App*.
+2. **Per website**: when you open it, Safari shows a prompt — choose **Allow**. Denied it by accident? Tap **aA** in the address bar → **Website Settings** → Location → **Allow** and reload.
+3. **Installed app**: after "Add to Home Screen" the app counts as its own app; it asks for permission again and then appears under its own name in Settings → Privacy → Location Services.
 
-## Locatietoestemming op de iPhone (Safari)
+## Controls
 
-De toestemming zit in drie lagen:
+- **Tap the unit** below the big number to switch between km/h and mph (also possible via settings).
+- **Gear icon, top left**: settings — language (Dutch/English), unit, altitude & compass on/off, and starting HUD mode.
+- **Altitude & compass**: optional panel showing GPS altitude and heading (degrees + cardinal direction).
+- **HUD mode**: mirrored, extra-large speed number — lay the phone flat on the dashboard so the image reflects in the windscreen. Tap the screen to return.
+- **Button top left** (meter icon): toggles between map mode and focus mode (just a large speed number — lower power and more readable in bright light).
+- **Navigation** (compass button): search for a destination, pick a vehicle profile (car, bicycle, moped, light moped), and get a route on the map with a simple turn-by-turn bar at the top. Save up to five favourite destinations for quick access. If you drift off the route it recalculates automatically.
+- **Start trip / Stop / Resume / Reset**: trip meter with distance, driving time, average and top speed. The trip is preserved even if the app closes.
+- **Trip history**: completed trips are stored and can be reviewed afterwards on their own map, and exported as a GPX file to use in other apps.
+- **Dot, top right**: GPS quality (green = sharp, orange = moderate, red = poor/no fix).
+- The screen stays on automatically as long as the app is open (Wake Lock).
 
-1. **Systeem**: Instellingen → Privacy en beveiliging → Locatievoorzieningen **aan**, en in de lijst **Safari-websites** op *Bij gebruik van app*.
-2. **Per website**: bij het openen toont Safari een pop-up — kies **Sta toe**. Per ongeluk geweigerd? Tik in de adresbalk op **aA** → **Website-instellingen** → Locatie → **Sta toe** en herlaad.
-3. **Geïnstalleerde app**: na "Zet op beginscherm" geldt de app als eigen app; hij vraagt opnieuw om toestemming en staat daarna onder zijn eigen naam in Instellingen → Privacy → Locatievoorzieningen.
+## Good to know
 
-## Bediening
+- GPS only works over **https** — GitHub Pages handles that automatically.
+- Outdoors and in motion, GPS speed is accurate; indoors or while standing still the value can drift briefly. The app filters out stationary noise.
+- iPhone: keeping the screen awake (Wake Lock) works from iOS 16.4 onward in an installed PWA.
+- The map needs internet (tiles from OpenFreeMap, free and without a key); the speedometer and trip meter also work **without** internet.
+- Navigation needs internet: destination search uses Photon (Komoot) and routing uses BRouter. These are free public services with fair-use limits — fine for personal use.
 
-- **Tik op de eenheid** onder het grote getal om te wisselen tussen km/u en mph (kan ook via instellingen).
-- **Tandwiel linksboven**: instellingen — taal (Nederlands/Engels), eenheid, hoogte & kompas aan/uit, en HUD-modus starten.
-- **Hoogte & kompas**: optioneel paneel met GPS-hoogte en rijrichting (graden + windrichting).
-- **HUD-modus**: gespiegeld, extra groot snelheidsgetal — leg de telefoon plat op het dashboard zodat het beeld in de voorruit reflecteert. Tik op het scherm om terug te keren.
-- **Knop linksboven** (meter-icoon): wisselt tussen kaartmodus en focusmodus (alleen een groot snelheidsgetal — zuiniger en beter leesbaar in fel licht).
-- **Start rit / Stop / Hervat / Reset**: tripmeter met afstand, rijtijd, gemiddelde en topsnelheid. De rit blijft bewaard, ook als de app sluit.
-- **Stip rechtsboven**: GPS-kwaliteit (groen = scherp, oranje = matig, rood = slecht/geen fix).
-- Het scherm blijft automatisch aan zolang de app open staat (Wake Lock).
+## Roadmap (ideas for later)
 
-## Goed om te weten
-
-- GPS werkt alleen via **https** — GitHub Pages regelt dat automatisch.
-- Buiten en in beweging is GPS-snelheid nauwkeurig; binnen of stilstaand kan de waarde even zweven. De app filtert stilstand-ruis weg.
-- iPhone: schermvergrendeling voorkomen (Wake Lock) werkt vanaf iOS 16.4 in een geïnstalleerde PWA.
-- De kaart heeft internet nodig (tegels van OpenFreeMap, gratis en zonder sleutel); de snelheidsmeter en tripmeter werken ook **zonder** internet.
-
-## Roadmap (v3-ideeën)
-
-- Ritgeschiedenis opslaan en terugkijken
+- Cache map regions for fully offline map use.
+- Speed-limit overlay and a gentle warning when exceeding it.
+- Voice guidance for navigation instructions.
+- A statistics dashboard across all saved trips (distance per week, etc.).
+- Light/dark theme, or automatic switching based on time of day.
+- More export formats and easy trip sharing.
+- A full code overhaul / review once Claude Fable 5 is back online — tidy up the single-file structure, recheck the navigation logic end-to-end, and look for simplifications.
