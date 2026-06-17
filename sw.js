@@ -3,7 +3,8 @@
    - overige eigen bestanden: cache-first voor snelle start
    - kaarttegels en fonts: altijd via het netwerk */
 
-const CACHE = "ritmeter-v10";
+const VERSION = "11";                 // ← alleen dit nog bijwerken
+const CACHE = "ritmeter-v" + VERSION;
 const SHELL = [
   "./",
   "./index.html",
@@ -12,6 +13,10 @@ const SHELL = [
   "./icon-512.png",
   "./icon-512-maskable.png"
 ];
+
+self.addEventListener("message", e => {
+  if (e.data === "version" && e.ports[0]) e.ports[0].postMessage(VERSION);
+});
 
 self.addEventListener("install", e => {
   e.waitUntil(
