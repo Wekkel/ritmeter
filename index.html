@@ -354,7 +354,49 @@ body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPa
   body.navigating #setBtn{top:calc(var(--sat) + 62px)}
   body.navigating #histBtn{top:calc(var(--sat) + 114px)}
   body.navigating #navBtn{top:calc(var(--sat) + 166px)}
+
+  
 }
+  /* ═══ Fase B: meten + navigatie samen ═══════════════════════ */
+
+/* slanke trip-regel: verschijnt tijdens navigatie (niet bij auto = nav-first) */
+#navTrip{position:fixed;z-index:31;display:none;align-items:center;gap:8px;
+  left:50%;transform:translateX(-50%);bottom:calc(var(--sab) + 12px);
+  background:rgba(13,19,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:99px;padding:5px 14px 5px 5px;
+  box-shadow:0 4px 16px rgba(0,0,0,.45);max-width:calc(100vw - 24px)}
+#navTrip .tt{font-family:"Chakra Petch",sans-serif;font-size:13.5px;color:var(--text);
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#navTripBtn{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  background:var(--amber);border:1px solid var(--amber);color:#1A1200}
+#navTripBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
+
+/* tijdens navigatie: groot tripblok weg, slanke regel erbij (behalve auto) */
+body.navigating #trip{display:none!important}
+body.navigating:not(.navfirst) #navTrip{display:flex}
+
+/* auto = nav-first: helemaal geen meten-blok */
+body.navfirst #trip{display:none!important}
+
+/* HUD-/focusmodus: slanke regel ook verbergen */
+body.hud #navTrip,body.focusmode #navTrip{display:none!important}
+
+/* voertuigkeuze in instellingen */
+#vehSeg{display:flex;gap:4px;background:#0B0F14;border:1px solid var(--line);
+  border-radius:11px;padding:3px}
+#vehSeg button{flex:1;padding:8px 4px;border-radius:8px;font-size:12.5px;font-weight:700;
+  color:var(--muted);white-space:nowrap}
+#vehSeg button.on{background:var(--amber);color:#1A1200}
+
+/* landscape: slanke regel naar de rechterkolom, onder de HUD */
+@media (orientation: landscape){
+  #navTrip{left:auto;right:14px;transform:none;bottom:auto;
+    top:calc(var(--sat) + 78px);max-width:min(340px,42vw)}
+}
+  /* herberekenen-status in de HUD */
+#navHud.rerouting{border-color:var(--amber)}
+@keyframes navPulse{0%,100%{opacity:1}50%{opacity:.45}}
+#navHud.rerouting #navArrow{animation:navPulse 1s ease-in-out infinite;color:var(--amber)}
 </style>
 </head>
 <body>
@@ -417,6 +459,12 @@ body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPa
   <button id="navStopBtn" class="navStop" aria-label="stop">×</button>
 </div>
 
+  <!-- slanke trip-regel tijdens navigatie (meten + navigeren samen) -->
+<div id="navTrip">
+  <button id="navTripBtn" aria-label="trip"></button>
+  <span class="tt" id="navTripTxt">—</span>
+</div>
+
 <!-- navigatiepaneel -->
 <div id="navPanel">
   <div class="navGrip"></div>
@@ -432,6 +480,10 @@ body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPa
     <button data-p="bike">Fiets</button>
     <button data-p="moped">Bromfiets</button>
     <button data-p="snor">Snorfiets</button>
+  </div>
+  <div class="navSeg" id="navStyle" style="display:none">
+    <button data-s="fast" class="on">Snel</button>
+    <button data-s="calm">Rustig</button>
   </div>
   <div id="navInfo" class="navInfo"></div>
   <div class="navBtns">
@@ -500,6 +552,16 @@ body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPa
     <div class="seg"><button id="unitKm">km/u</button><button id="unitMi">mph</button></div>
   </div>
 
+  <div class="row" style="flex-direction:column;align-items:stretch">
+    <div class="info" style="margin-bottom:10px"><b id="lblVeh">Voertuig</b><span id="dscVeh"></span></div>
+    <div id="vehSeg">
+      <button data-p="car">Auto</button>
+      <button data-p="bike">Fiets</button>
+      <button data-p="moped">Bromfiets</button>
+      <button data-p="snor">Snorfiets</button>
+    </div>
+  </div>
+  
   <div class="row">
     <div class="info"><b id="lblExtra"></b><span id="dscExtra"></span></div>
     <button id="extraSw" class="switch" role="switch"></button>
@@ -535,7 +597,7 @@ body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPa
   </div>
 
   <button id="setClose">Sluiten</button>
-  <p id="appVer" style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter v10</p>
+  <p id="appVer" style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter</p>
 </div></div>
 
 <div id="notice"><div class="card">
@@ -595,7 +657,10 @@ const I18N = {
     nav_no_favs:"Nog geen opgeslagen locaties", nav_wait_gps:"Wachten op GPS\u2026",
     nav_rerouted:"Route herberekend", nav_arrived:"Aangekomen",
     nav_fav_saved:"Locatie opgeslagen", nav_fav_full:"Maximaal 5 locaties",
-    eta_hr:"u", eta_min:"min"
+    eta_hr:"u", eta_min:"min",
+    rt_fast:"Snel", rt_calm:"Rustig", nav_rerouting:"Herberekenen\u2026",
+    vehicle:"Voertuig",
+    vehicle_d:"Indeling: bij auto staat navigatie voorop, bij fiets/brom/snor het meten"
   },
   en: {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
@@ -634,7 +699,10 @@ const I18N = {
     nav_no_favs:"No saved places yet", nav_wait_gps:"Waiting for GPS\u2026",
     nav_rerouted:"Route recalculated", nav_arrived:"Arrived",
     nav_fav_saved:"Place saved", nav_fav_full:"Maximum of 5 places",
-    eta_hr:"hr", eta_min:"min"
+   eta_hr:"hr", eta_min:"min",
+    rt_fast:"Fast", rt_calm:"Quiet", nav_rerouting:"Rerouting\u2026",
+    vehicle:"Vehicle",
+    vehicle_d:"Layout: car puts navigation first, bike/moped focuses on measuring",
   }
 };
 let lang = LS.getItem("rm_lang") || "nl";
@@ -651,6 +719,7 @@ let hudInfoOn = LS.getItem("rm_hudinfo")==="1";
 let digitColor= LS.getItem("rm_color") || "amber";
 let dimVal    = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
 let hud = false, mapReady = false, firstFix = false;
+let vehicle = LS.getItem("rm_vehicle") || "bike";   // voertuig = routeprofiel + indeling
 
 const trip = Object.assign(
   { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 },
@@ -902,7 +971,20 @@ function render(){
   if (hud && hudInfoOn)
     $("hudData").textContent =
       `${fmtDist(trip.dist)} ${useMph ? "mi" : "km"} · ${fmtTime(trip.ms)}`;
+
+  /* slanke trip-regel tijdens navigatie (meten + navigeren samen) */
+  if (document.body.classList.contains("navigating") && vehicle !== "car"){
+    const tAvg = trip.ms > 3000 ? trip.dist / (trip.ms/1000) : 0;
+    $("navTripTxt").textContent =
+      `${fmtDist(trip.dist)} ${useMph?"mi":"km"} · ${fmtTime(trip.ms)} · ${t("avg")} ${fmtSpeed(tAvg)}`;
+    const tb = $("navTripBtn");
+    tb.className = trip.running ? "halt" : "";
+    tb.innerHTML = trip.running
+      ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+      : '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l11 7-11 7z"/></svg>';
+  }
 }
+  
 
 /* ── rit opslaan / wissen ────────────────────────────────── */
 function tripName(start){
@@ -1144,9 +1226,14 @@ function applyLang(){
   $("rS").textContent = cd[4]; $("rW").textContent = cd[6];
   $("navSearch").placeholder = t("nav_search");
   $("navStart").textContent  = t("nav_start");
-  { const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
+ { const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
     document.querySelectorAll("#navProfiles button")
       .forEach(b => b.textContent = pl[b.dataset.p]); }
+  $("lblVeh").textContent = t("vehicle"); $("dscVeh").textContent = t("vehicle_d");
+  { const pv={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
+    document.querySelectorAll("#vehSeg button").forEach(b => b.textContent = pv[b.dataset.p]); }
+  { const ps={fast:t("rt_fast"),calm:t("rt_calm")};
+    document.querySelectorAll("#navStyle button").forEach(b => b.textContent = ps[b.dataset.s]); }
   if (typeof renderFavs === "function") renderFavs();
   syncSettingsUI(); render();
 }
@@ -1170,7 +1257,7 @@ function syncSettingsUI(){
 }
 
 /* ── bediening ───────────────────────────────────────────── */
-$("startBtn").onclick = () => {
+function toggleTrip(){
   trip.running = !trip.running;
   if (trip.running){
     if (!trip.start) trip.start = Date.now();
@@ -1178,7 +1265,9 @@ $("startBtn").onclick = () => {
   } else LS.setItem("rm_route", JSON.stringify(route));
   LS.setItem("rm_trip", JSON.stringify(trip));
   render();
-};
+}
+$("startBtn").onclick   = toggleTrip;
+$("navTripBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
 
 $("unitBtn").onclick = () => setUnit(!useMph);
@@ -1285,7 +1374,15 @@ function hideNotice(){ $("notice").classList.remove("show"); }
 $("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
 
 /* ── service worker & start ──────────────────────────────── */
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+if ("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+  navigator.serviceWorker.ready.then(reg => {
+    const sw = reg.active; if (!sw) return;
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => { if (e.data) $("appVer").textContent = "RitMeter v" + e.data; };
+    sw.postMessage("version", [ch.port2]);
+  }).catch(()=>{});
+}
 applyLang(); applyMode(); keepAwake(); lockPortrait(); startGPS();
 
   /* ═══════════════════════════════════════════════════════════
@@ -1298,7 +1395,20 @@ applyLang(); applyMode(); keepAwake(); lockPortrait(); startGPS();
 
 const PHOTON = "https://photon.komoot.io/api/";
 const BROUTER = "https://brouter.de/brouter";
-const PROFILE_MAP = { car:"car-fast", bike:"trekking", moped:"moped", snor:"trekking" };
+/* route-stijl: "fast" (fastbike/car-fast) of "calm" (trekking) — alleen voor fiets/snor */
+let routeStyle = LS.getItem("rm_route_style") || "fast";
+function profileFor(mode, style){
+  if (mode === "bike" || mode === "snor") return style === "calm" ? "trekking" : "fastbike";
+  return mode === "moped" ? "moped" : "car-fast";   // brom vast op moped, auto op car-fast
+}
+function navProject(lat, lon, brgDeg, distM){        // punt distM meter vooruit in koers brgDeg
+  const Rm = 6371000, br = brgDeg*Math.PI/180, dr = distM/Rm;
+  const la = lat*Math.PI/180, lo = lon*Math.PI/180;
+  const la2 = Math.asin(Math.sin(la)*Math.cos(dr) + Math.cos(la)*Math.sin(dr)*Math.cos(br));
+  const lo2 = lo + Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la),
+                              Math.cos(dr)-Math.sin(la)*Math.sin(la2));
+  return { lat: la2*180/Math.PI, lon: lo2*180/Math.PI };
+}
 /* km/u: cap = realistische bovengrens, def = vaste schatting bij onbruikbare API-tijd */
 const SPEED = { car:{cap:140,def:60}, bike:{cap:35,def:18},
                 moped:{cap:50,def:40}, snor:{cap:30,def:25} };
@@ -1461,11 +1571,16 @@ function computeEta(distM, apiTimeS, mode){
   if (v > s.cap || v < 3) return distM / (s.def/3.6);     // onrealistisch → vaste schatting
   return apiTimeS;
 }
-async function fetchRoute(o, d, mode){
-  const prof = PROFILE_MAP[mode] || "trekking";
-  const url = `${BROUTER}?lonlats=${o.lon.toFixed(6)},${o.lat.toFixed(6)}|` +
-              `${d.lon.toFixed(6)},${d.lat.toFixed(6)}` +
-              `&profile=${prof}&alternativeidx=0&format=geojson&exportWaypoints=1`;
+async function fetchRoute(o, d, mode, headingDeg){
+  const prof = profileFor(mode, routeStyle);
+  let lonlats = `${o.lon.toFixed(6)},${o.lat.toFixed(6)}|`;
+  if (headingDeg != null && !isNaN(headingDeg)){          // richting-bewust: 40 m vooruit als tussenpunt
+    const v = navProject(o.lat, o.lon, headingDeg, 40);
+    lonlats += `${v.lon.toFixed(6)},${v.lat.toFixed(6)}|`;
+  }
+  lonlats += `${d.lon.toFixed(6)},${d.lat.toFixed(6)}`;
+  const url = `${BROUTER}?lonlats=${lonlats}&profile=${prof}` +
+              `&alternativeidx=0&format=geojson&exportWaypoints=1`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("brouter " + res.status);
   const j = await res.json();
@@ -1510,9 +1625,18 @@ async function navComputeRoute(){
 async function navReroute(){
   if (!navHere || nav.rerouting) return;
   nav.rerouting = true;
-  try{ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile)); toast(t("nav_rerouted")); }
-  catch(e){ /* oude route behouden */ }
-  finally{ nav.rerouting = false; nav.offSince = null; }
+  showReroute(true);
+  try{
+    try{ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile, lastBearing)); } // richting-bewust
+    catch(_){ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile)); }          // val terug zonder richting
+    toast(t("nav_rerouted"));
+  } catch(e){ /* oude route behouden */ }
+  finally{ nav.rerouting = false; nav.offSince = null; showReroute(false); }
+}
+function showReroute(on){
+  const el = $("navHud");
+  if (on){ $("navStreet").textContent = t("nav_rerouting"); el.classList.add("rerouting"); }
+  else el.classList.remove("rerouting");
 }
 
 /* ── route + bestemming op de hoofdkaart ─────────────────── */
@@ -1707,13 +1831,34 @@ $("navSearch").addEventListener("keydown", e => {
   if (e.key === "Enter"){ clearTimeout(geoTimer);
     const q = e.target.value.trim(); if (q.length >= 2) geoSearch(q); }
 });
-document.querySelectorAll("#navProfiles button").forEach(b => {
-  b.onclick = () => {
-    nav.profile = b.dataset.p;
-    document.querySelectorAll("#navProfiles button").forEach(x => x.classList.toggle("on", x === b));
-    if (nav.dest) navComputeRoute();
-  };
+/* voertuig bepaalt het routeprofiel én de indeling (meten- vs nav-first) */
+function applyVehicle(){
+  document.body.classList.toggle("navfirst", vehicle === "car");
+  document.querySelectorAll("#navProfiles button, #vehSeg button")
+    .forEach(b => b.classList.toggle("on", b.dataset.p === vehicle));
+  const sty = $("navStyle");
+  if (sty) sty.style.display = (vehicle === "bike" || vehicle === "snor") ? "flex" : "none";
+}
+function setVehicle(v){
+  vehicle = v; nav.profile = v; LS.setItem("rm_vehicle", v);
+  applyVehicle();
+  if (nav.dest) navComputeRoute();
+  render();
+}
+document.querySelectorAll("#navProfiles button, #vehSeg button").forEach(b => {
+  b.onclick = () => setVehicle(b.dataset.p);
 });
+function setRouteStyle(s){
+  routeStyle = s; LS.setItem("rm_route_style", s);
+  document.querySelectorAll("#navStyle button").forEach(b => b.classList.toggle("on", b.dataset.s === s));
+  if (nav.dest) navComputeRoute();
+}
+document.querySelectorAll("#navStyle button").forEach(b => {
+  b.onclick = () => setRouteStyle(b.dataset.s);
+  b.classList.toggle("on", b.dataset.s === routeStyle);
+});
+nav.profile = vehicle;
+applyVehicle();
 window.addEventListener("resize", () => { if (map){ map.resize(); navPadding(); } });
 if (screen.orientation)
   screen.orientation.addEventListener("change",
