@@ -3,7 +3,7 @@
    - overige eigen bestanden: cache-first voor snelle start
    - kaarttegels en fonts: altijd via het netwerk */
 
-const VERSION = "12";                 // ← alleen dit nog bijwerken
+const VERSION = "13";                 // ← alleen dit nog bijwerken
 const CACHE = "ritmeter-v" + VERSION;
 const SHELL = [
   "./",
