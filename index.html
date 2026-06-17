@@ -832,7 +832,7 @@ function initMap(lon, lat){
   map.on("load", () => { mapReady = true; });
   map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });   // handmatig slepen/zoomen
 }
-}
+
 function updateCamera(lon, lat, bearing){
   if (!marker) return;
   marker.setLngLat([lon,lat]);
