@@ -685,12 +685,12 @@ const I18N = {
     unit_kmh:"km/u", unit_mph:"mph", time:"tijd", dist:"afstand", avg:"gem", max:"max",
     start:"Start rit", stop:"Stop", resume:"Hervat", reset:"Reset",
     save_reset:"Opslaan & reset", saved:"Rit opgeslagen", cleared:"Teller gereset",
-    alt:"hoogte NAP", hdg:"koers", nofix:"geen fix", paused:"pauze",
+    alt:"hoogte", alt_nap:"hoogte NAP", alt_msl:"hoogte ≈ zeeniveau", hdg:"koers", nofix:"geen fix", paused:"pauze",
     set_title:"Instellingen", lang:"Taal", lang_d:"Taal van de app",
     unit:"Eenheid", unit_d:"Snelheid en afstand",
     extra:"Hoogte & kompas", extra_d:"Toon hoogte en rijrichting",
     altcal:"Hoogte ijken", altcal_d:"GPS toont ellipsoïdehoogte; standaard ~43 m omgerekend naar NAP. IJk op een bekende hoogte (bijv. 0 m op het water).",
-    alt_ijk:"IJk", alt_std:"Standaard", alt_prompt:"Huidige hoogte in meters (NAP):",
+    alt_ijk:"IJk", alt_std:"Standaard", alt_prompt:"Huidige hoogte in meters:",
     alt_done:"Hoogte geijkt", alt_reset:"Teruggezet naar standaard", alt_nofix:"Nog geen hoogtefix",
     color:"Kleur cijfers", color_d:"Voor de snelheidsmeter en HUD",
     apause:"Auto-pauze", apause_d:"Tijd pauzeert na 5 s stilstand",
@@ -730,12 +730,12 @@ const I18N = {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
     start:"Start trip", stop:"Stop", resume:"Resume", reset:"Reset",
     save_reset:"Save & reset", saved:"Trip saved", cleared:"Counter reset",
-    alt:"altitude NAP", hdg:"heading", nofix:"no fix", paused:"paused",
+   alt:"altitude", alt_nap:"altitude NAP", alt_msl:"altitude ≈ MSL", hdg:"heading", nofix:"no fix", paused:"paused",
     set_title:"Settings", lang:"Language", lang_d:"App language",
     unit:"Units", unit_d:"Speed and distance",
     extra:"Altitude & compass", extra_d:"Show altitude and travel direction",
     altcal:"Calibrate altitude", altcal_d:"GPS shows ellipsoidal height; ~43 m is converted to NAP by default. Calibrate to a known height (e.g. 0 m on the water).",
-    alt_ijk:"Set", alt_std:"Default", alt_prompt:"Current height in metres (NAP):",
+    alt_ijk:"Set", alt_std:"Default", alt_prompt:"Current height in metres:",
     alt_done:"Altitude calibrated", alt_reset:"Reset to default", alt_nofix:"No altitude fix yet",
     color:"Digit colour", color_d:"For the speedometer and HUD",
     apause:"Auto-pause", apause_d:"Time pauses after 5 s standstill",
@@ -799,12 +799,16 @@ let lastPos = null;        // anker voor afstandsmeting
 let lastSample = null;     // laatste routepunt-sample
 let fixBuf = [];           // recente fixes voor venster-snelheid & stilstand
 let dispSpeed = 0;         // gefilterde snelheid (m/s)
-let lastBearing = null, lastAltRaw = null, lastFixTime = 0;
+let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, lastLon = null;
 /* GPS levert ellipsoïdehoogte (WGS84); in NL ligt NAP ~43 m lager.
    altOffset wordt afgetrokken om ~NAP te tonen en is ijkbaar. */
 const GEOID_NL = 43;
 let altOffset = parseFloat(LS.getItem("rm_altoff"));
 if (!isFinite(altOffset)) altOffset = GEOID_NL;
+/* ruwe NL-bounding-box: binnen NL labelen we "NAP", daarbuiten "≈ zeeniveau" */
+const NL_BOX = { latMin:50.6, latMax:53.7, lonMin:3.2, lonMax:7.4 };
+const inNL = (lat, lon) => lat != null && lat >= NL_BOX.latMin && lat <= NL_BOX.latMax
+                                       && lon >= NL_BOX.lonMin && lon <= NL_BOX.lonMax;
 let isPaused = false, zeroSince = null;
 let following = true, followTimer = null;   // kaart volgt de positie; pauzeert bij handmatig slepen
 
@@ -922,6 +926,7 @@ function onFix(pos){
   hideNotice();
   const c = pos.coords, ts = pos.timestamp;
   lastFixTime = Date.now();
+  lastLat = c.latitude; lastLon = c.longitude;
   if (!firstFix){ firstFix = true; initMap(c.longitude, c.latitude); }
 
   const acc = c.accuracy ?? 999;
@@ -1053,8 +1058,10 @@ function render(){
   $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
   $("resetBtn").disabled    = trip.running || !trip.ms;
 
- if (showExtra){
+if (showExtra){
     const napAlt = lastAltRaw == null ? null : lastAltRaw - altOffset;
+    $("lblAlt").textContent = lastLat == null ? t("alt")
+      : inNL(lastLat, lastLon) ? t("alt_nap") : t("alt_msl");
     $("altVal").textContent = napAlt == null ? "—"
       : useMph ? Math.round(napAlt * 3.28084) + " ft" : Math.round(napAlt) + " m";
     $("hdgVal").textContent = lastBearing == null ? "—"
