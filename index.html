@@ -420,6 +420,39 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
   /* grote tripbalk houdt de knoppenrail links vrij */
   #trip{left:calc(var(--sal) + 70px);right:calc(var(--sar) + 14px)}
 }
+
+  /* focus- en HUD-weergave in landscape: groot getal gecentreerd, knoppenrail links vrij */
+@media (orientation: landscape){
+  body.focusmode #speedCluster{
+    left:50%; right:auto; top:50%;
+    transform:translate(-50%,-50%);
+    text-align:center;
+  }
+  body.focusmode #speedVal{ font-size:min(42vh,190px); }
+
+  body.hud #speedCluster{
+    left:50%; right:auto; top:50%;
+    transform:translate(-50%,-50%) scaleX(-1);
+  }
+  body.hud #speedVal{ font-size:min(48vh,230px); }
+
+  /* terugknop altijd boven de meter, voor de zekerheid */
+  body.focusmode #modeBtn{ z-index:20; }
+}
+  @media (orientation: landscape){
+  /* compact, smal trip-eiland (compactheid 32 / breedte 42%) — laat de positiedriehoek vrij */
+  #trip{
+    left:calc(var(--sal) + 70px);
+    right:auto;
+    width:42%;
+    max-width:460px;
+    padding:8px 13px;
+  }
+  #stats{ margin-bottom:8px; gap:5px; }
+  .stat b{ font-size:16.5px; }
+  .stat span{ font-size:9px; letter-spacing:.1em; }
+  #trip .btn{ padding-top:10px; padding-bottom:10px; font-size:14px; }
+}
 </style>
 </head>
 <body>
@@ -427,16 +460,16 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
 <div id="map"></div>
 
 <button id="modeBtn" class="fab" aria-label="view">
-  <svg id="modeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/></svg>
+ <svg id="modeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17a8 8 0 1 1 14 0"/><path d="M12 13l4-3"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/></svg>
 </button>
 <button id="setBtn" class="fab" aria-label="settings">
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 </button>
 <button id="histBtn" class="fab" aria-label="history">
-  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
 </button>
 <button id="navBtn" class="fab" aria-label="navigation">
-  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="16 8 12 13 8 16 12 11 16 8" fill="currentColor" stroke="none"/></svg>
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
 </button>
   <button id="recenterBtn" class="fab" aria-label="center">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>
@@ -591,6 +624,11 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
   </div>
 
   <div class="row">
+    <div class="info"><b id="lblAltCal"></b><span id="dscAltCal"></span></div>
+    <div class="seg"><button id="altCalBtn"></button><button id="altCalReset"></button></div>
+  </div>
+
+  <div class="row">
     <div class="info"><b id="lblColor"></b><span id="dscColor"></span></div>
     <div class="swatches">
       <button id="colAmber" class="sw" style="background:#FFB300"></button>
@@ -647,10 +685,13 @@ const I18N = {
     unit_kmh:"km/u", unit_mph:"mph", time:"tijd", dist:"afstand", avg:"gem", max:"max",
     start:"Start rit", stop:"Stop", resume:"Hervat", reset:"Reset",
     save_reset:"Opslaan & reset", saved:"Rit opgeslagen", cleared:"Teller gereset",
-    alt:"hoogte", hdg:"koers", nofix:"geen fix", paused:"pauze",
+    alt:"hoogte NAP", hdg:"koers", nofix:"geen fix", paused:"pauze",
     set_title:"Instellingen", lang:"Taal", lang_d:"Taal van de app",
     unit:"Eenheid", unit_d:"Snelheid en afstand",
     extra:"Hoogte & kompas", extra_d:"Toon hoogte en rijrichting",
+    altcal:"Hoogte ijken", altcal_d:"GPS toont ellipsoïdehoogte; standaard ~43 m omgerekend naar NAP. IJk op een bekende hoogte (bijv. 0 m op het water).",
+    alt_ijk:"IJk", alt_std:"Standaard", alt_prompt:"Huidige hoogte in meters (NAP):",
+    alt_done:"Hoogte geijkt", alt_reset:"Teruggezet naar standaard", alt_nofix:"Nog geen hoogtefix",
     color:"Kleur cijfers", color_d:"Voor de snelheidsmeter en HUD",
     apause:"Auto-pauze", apause_d:"Tijd pauzeert na 5 s stilstand",
     hudinfo:"Ritinfo in HUD", hudinfo_d:"Toon afstand en tijd in de HUD",
@@ -689,10 +730,13 @@ const I18N = {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
     start:"Start trip", stop:"Stop", resume:"Resume", reset:"Reset",
     save_reset:"Save & reset", saved:"Trip saved", cleared:"Counter reset",
-    alt:"altitude", hdg:"heading", nofix:"no fix", paused:"paused",
+    alt:"altitude NAP", hdg:"heading", nofix:"no fix", paused:"paused",
     set_title:"Settings", lang:"Language", lang_d:"App language",
     unit:"Units", unit_d:"Speed and distance",
     extra:"Altitude & compass", extra_d:"Show altitude and travel direction",
+    altcal:"Calibrate altitude", altcal_d:"GPS shows ellipsoidal height; ~43 m is converted to NAP by default. Calibrate to a known height (e.g. 0 m on the water).",
+    alt_ijk:"Set", alt_std:"Default", alt_prompt:"Current height in metres (NAP):",
+    alt_done:"Altitude calibrated", alt_reset:"Reset to default", alt_nofix:"No altitude fix yet",
     color:"Digit colour", color_d:"For the speedometer and HUD",
     apause:"Auto-pause", apause_d:"Time pauses after 5 s standstill",
     hudinfo:"Trip info in HUD", hudinfo_d:"Show distance and time in the HUD",
@@ -755,7 +799,12 @@ let lastPos = null;        // anker voor afstandsmeting
 let lastSample = null;     // laatste routepunt-sample
 let fixBuf = [];           // recente fixes voor venster-snelheid & stilstand
 let dispSpeed = 0;         // gefilterde snelheid (m/s)
-let lastBearing = null, lastAlt = null, lastFixTime = 0;
+let lastBearing = null, lastAltRaw = null, lastFixTime = 0;
+/* GPS levert ellipsoïdehoogte (WGS84); in NL ligt NAP ~43 m lager.
+   altOffset wordt afgetrokken om ~NAP te tonen en is ijkbaar. */
+const GEOID_NL = 43;
+let altOffset = parseFloat(LS.getItem("rm_altoff"));
+if (!isFinite(altOffset)) altOffset = GEOID_NL;
 let isPaused = false, zeroSince = null;
 let following = true, followTimer = null;   // kaart volgt de positie; pauzeert bij handmatig slepen
 
@@ -829,7 +878,7 @@ function initMap(lon, lat){
   el.innerHTML = `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
   marker = new maplibregl.Marker({element:el, rotationAlignment:"map"})
             .setLngLat([lon,lat]).addTo(map);
-  map.on("load", () => { mapReady = true; });
+  map.on("load", () => { mapReady = true; navPadding(); });
   map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });   // handmatig slepen/zoomen
 }
 
@@ -880,8 +929,14 @@ function onFix(pos){
   $("gpsTxt").textContent = `±${Math.round(acc)} m`;
 
   /* hoogte (gesmoothed) */
-  if (c.altitude != null && !isNaN(c.altitude))
-    lastAlt = lastAlt == null ? c.altitude : lastAlt * .7 + c.altitude * .3;
+ /* hoogte: sterk smoothen, slechte verticale fixes negeren/laag wegen */
+  if (c.altitude != null && !isNaN(c.altitude)){
+    const va = (c.altitudeAccuracy != null && !isNaN(c.altitudeAccuracy)) ? c.altitudeAccuracy : 30;
+    if (va <= 30){
+      const w = va <= 8 ? .25 : va <= 15 ? .15 : .08;
+      lastAltRaw = lastAltRaw == null ? c.altitude : lastAltRaw + w * (c.altitude - lastAltRaw);
+    }
+  }
 
   /* fix-buffer (±12 s) voor venster-snelheid en stilstanddetectie */
   fixBuf.push({ t:ts, lat:c.latitude, lon:c.longitude, acc });
@@ -936,7 +991,7 @@ function onFix(pos){
     if (!lastSample || ts - lastSample.t >= 3000 || hv(lastSample, here) >= 25){
       route.push({ t:ts, lat:+c.latitude.toFixed(6), lon:+c.longitude.toFixed(6),
                    v:+dispSpeed.toFixed(2),
-                   alt: lastAlt == null ? null : +lastAlt.toFixed(1),
+                  alt: lastAltRaw == null ? null : +(lastAltRaw - altOffset).toFixed(1),
                    acc: Math.round(acc) });
       lastSample = { ...here, t:ts };
     }
@@ -998,9 +1053,10 @@ function render(){
   $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
   $("resetBtn").disabled    = trip.running || !trip.ms;
 
-  if (showExtra){
-    $("altVal").textContent = lastAlt == null ? "—"
-      : useMph ? Math.round(lastAlt * 3.28084) + " ft" : Math.round(lastAlt) + " m";
+ if (showExtra){
+    const napAlt = lastAltRaw == null ? null : lastAltRaw - altOffset;
+    $("altVal").textContent = napAlt == null ? "—"
+      : useMph ? Math.round(napAlt * 3.28084) + " ft" : Math.round(napAlt) + " m";
     $("hdgVal").textContent = lastBearing == null ? "—"
       : Math.round(lastBearing) + "° " + cardinal(lastBearing);
   }
@@ -1245,6 +1301,8 @@ function applyLang(){
   $("lblLang").textContent = t("lang");     $("dscLang").textContent = t("lang_d");
   $("lblUnit").textContent = t("unit");     $("dscUnit").textContent = t("unit_d");
   $("lblExtra").textContent = t("extra");   $("dscExtra").textContent = t("extra_d");
+  $("lblAltCal").textContent = t("altcal"); $("dscAltCal").textContent = t("altcal_d");
+  $("altCalBtn").textContent = t("alt_ijk"); $("altCalReset").textContent = t("alt_std");
   $("lblColor").textContent = t("color");   $("dscColor").textContent = t("color_d");
   $("lblAP").textContent = t("apause");     $("dscAP").textContent = t("apause_d");
   $("lblHudInfo").textContent = t("hudinfo");$("dscHudInfo").textContent = t("hudinfo_d");
@@ -1318,9 +1376,9 @@ $("unitMi").onclick = () => setUnit(true);
 $("modeBtn").onclick = () => { focus = !focus; LS.setItem("rm_focus", focus?"1":"0"); applyMode(); };
 function applyMode(){
   document.body.classList.toggle("focusmode", focus && !hud);
-  $("modeIcon").innerHTML = focus
-    ? `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>`
-    : `<circle cx="12" cy="12" r="9"/><path d="M12 12l4-5"/>`;
+ $("modeIcon").innerHTML = focus
+    ? `<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>`
+    : `<path d="M5 17a8 8 0 1 1 14 0"/><path d="M12 13l4-3"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/>`;
   if (!focus && !hud && map) setTimeout(() => map.resize(), 60);
 }
 
@@ -1331,6 +1389,20 @@ $("settings").onclick = e => { if (e.target === $("settings")) $("settings").cla
 $("langNL").onclick = () => { lang = "nl"; LS.setItem("rm_lang", lang); applyLang(); };
 $("langEN").onclick = () => { lang = "en"; LS.setItem("rm_lang", lang); applyLang(); };
 $("extraSw").onclick = () => { showExtra = !showExtra; LS.setItem("rm_extra", showExtra?"1":"0"); syncSettingsUI(); render(); };
+$("altCalBtn").onclick = () => {
+  if (lastAltRaw == null){ toast(t("alt_nofix")); return; }
+  const inp = prompt(t("alt_prompt"), String(Math.round(lastAltRaw - altOffset)));
+  if (inp == null) return;
+  const known = parseFloat(String(inp).replace(",", "."));
+  if (!isFinite(known)) return;
+  altOffset = lastAltRaw - known;
+  LS.setItem("rm_altoff", String(altOffset));
+  toast(t("alt_done")); render();
+};
+$("altCalReset").onclick = () => {
+  altOffset = GEOID_NL; LS.removeItem("rm_altoff");
+  toast(t("alt_reset")); render();
+};
 $("apSw").onclick = () => { autoPause = !autoPause; LS.setItem("rm_apause", autoPause?"1":"0"); syncSettingsUI(); };
 $("hudInfoSw").onclick = () => { hudInfoOn = !hudInfoOn; LS.setItem("rm_hudinfo", hudInfoOn?"1":"0"); syncSettingsUI(); render(); };
 $("colAmber").onclick = () => setColor("amber");
@@ -1726,7 +1798,9 @@ function navPadding(){
   let pad;
   if (land){
     const left = navPanelOpen() ? Math.min(380, Math.round(window.innerWidth*0.44)) + 20 : 130;
-    pad = { top:64, bottom:Math.round(window.innerHeight*0.10)+20, left, right:60 };
+    const tripH = $("trip").offsetHeight;                 // werkelijke hoogte; 0 wanneer verborgen
+    const bottom = tripH ? tripH + 22 : Math.round(window.innerHeight*0.10)+20;
+    pad = { top:64, bottom, left, right:60 };
   } else {
     const top = Math.round((document.body.classList.contains("navigating") ? 0.42 : 0.45) * window.innerHeight);
     const bottom = navPanelOpen() ? Math.round(window.innerHeight*0.40) : 120;
