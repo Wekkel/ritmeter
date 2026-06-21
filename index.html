@@ -127,6 +127,8 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 
 /* centreerknop */
 #r-recenter{justify-self:end;align-self:end}
+#r-zoom{justify-self:end;align-self:start;display:flex;flex-direction:column;gap:10px}
+#zoomIn:active,#zoomOut:active{color:var(--amber)}
 #r-recenter:active{color:var(--amber)}
 
 /* nav-info: rustige regel met resterende afstand + ETA */
@@ -198,6 +200,10 @@ body[data-presentation="map"][data-altitude="on"] #r-altitude{display:flex}
 #r-recenter{display:none}
 body[data-presentation="map"][data-dragged="yes"] #r-recenter{display:grid}
 
+/* zoomknoppen: alleen in kaart-stand (handig op autoschermen zonder pinch) */
+#r-zoom{display:none}
+body[data-presentation="map"] #r-zoom{display:flex}
+
 /* nav-info: alleen in kaart-stand tijdens route */
 #r-navinfo{display:none}
 body[data-presentation="map"][data-nav="route"] #r-navinfo{display:flex}
@@ -228,10 +234,11 @@ body[data-overlay="detail"] #detail{display:flex}
 
   #ui{
     grid-template-columns:auto 1fr auto;
-    grid-template-rows:auto auto 1fr auto auto;
+    grid-template-rows:auto auto auto 1fr auto auto;
     grid-template-areas:
       "controls speed    status"
       "controls altitude compass"
+      "controls .        zoom"
       "controls .        recenter"
       "navinfo  navinfo  navinfo"
       "trip     trip     trip";
@@ -240,6 +247,7 @@ body[data-overlay="detail"] #detail{display:flex}
   #r-speed{grid-area:speed}
   #r-status{grid-area:status}
   #r-compass{grid-area:compass}
+  #r-zoom{grid-area:zoom}
   #r-altitude{grid-area:altitude}
   #r-recenter{grid-area:recenter}
   #r-navinfo{grid-area:navinfo}
@@ -258,10 +266,11 @@ body[data-overlay="detail"] #detail{display:flex}
 
   #ui{
     grid-template-columns:auto auto 1fr auto;
-    grid-template-rows:auto auto 1fr auto;
+    grid-template-rows:auto auto auto 1fr auto;
     grid-template-areas:
       "controls speed    .       status"
       "controls .        .       compass"
+      "controls .        .       zoom"
       "controls trip     .       recenter"
       "controls trip     navinfo navinfo";
   }
@@ -269,6 +278,7 @@ body[data-overlay="detail"] #detail{display:flex}
   #r-speed{grid-area:speed;justify-self:start;min-width:0;padding:6px 18px 8px}
   #r-status{grid-area:status}
   #r-compass{grid-area:compass}
+  #r-zoom{grid-area:zoom}
   #r-altitude{display:none}                 /* hoogte-uitlezing alleen relevant in portret */
   #r-recenter{grid-area:recenter}
   #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(360px,46vw)}
@@ -455,6 +465,15 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
     </g>
     <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
   </svg></div>
+
+  <div id="r-zoom">
+    <button id="zoomIn" class="fab" aria-label="inzoomen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button id="zoomOut" class="fab" aria-label="uitzoomen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+    </button>
+  </div>
 
   <div id="r-altitude">
     <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
@@ -697,6 +716,7 @@ const I18N = {
     nav_err:"Kon route niet bepalen", nav_none:"Geen resultaten",
     nav_no_favs:"Nog geen opgeslagen locaties", nav_wait_gps:"Wachten op GPS\u2026",
     nav_arrived:"Aangekomen", nav_fav_saved:"Locatie opgeslagen", nav_fav_full:"Maximaal 5 locaties",
+    nav_rerouted:"Route herberekend",
     eta_hr:"u", eta_min:"min", remaining:"resterend"
   },
   en: {
@@ -738,6 +758,7 @@ const I18N = {
     nav_err:"Could not find a route", nav_none:"No results",
     nav_no_favs:"No saved places yet", nav_wait_gps:"Waiting for GPS\u2026",
     nav_arrived:"Arrived", nav_fav_saved:"Place saved", nav_fav_full:"Maximum of 5 places",
+    nav_rerouted:"Route recalculated",
     eta_hr:"hr", eta_min:"min", remaining:"left"
   }
 };
@@ -886,9 +907,9 @@ function applyMapPadding(){
   let pad;
   if (land){
     const left = panelOpen ? Math.min(380, Math.round(innerWidth*0.44)) + 20 : 130;
-    pad = { top:64, bottom: tripH ? tripH + 22 : 60, left, right:60 };
+    pad = { top: Math.round(innerHeight*0.42), bottom: tripH ? tripH + 22 : 60, left, right:60 };
   } else {
-    const top = Math.round((state.presentation === "map" ? 0.42 : 0.45) * innerHeight);
+    const top = Math.round((state.presentation === "map" ? 0.58 : 0.45) * innerHeight);
     const bottom = panelOpen ? Math.round(innerHeight*0.40) : (tripH ? tripH + 22 : 120);
     pad = { top, bottom, left:24, right:24 };
   }
@@ -905,7 +926,7 @@ function initMap(lon, lat){
     attributionControl:{compact:true}, fadeDuration:0
   });
   map.touchZoomRotate.disableRotation();
-  map.setPadding({ top: Math.round(innerHeight * .42) });
+  map.setPadding({ top: Math.round(innerHeight * .58) });
   const el = document.createElement("div");
   el.className = "me";
   el.innerHTML = `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
@@ -1336,6 +1357,8 @@ $("delBtn").onclick = async () => {
   await idbDel(detId); closeDetail(); openHist();
 };
 $("r-recenter").onclick = resumeFollow;
+$("zoomIn").onclick  = () => { if (map) map.zoomTo(Math.min(20, map.getZoom() + 1), { duration:300 }); };
+$("zoomOut").onclick = () => { if (map) map.zoomTo(Math.max(4,  map.getZoom() - 1), { duration:300 }); };
 
 /* ── scherm aanhouden ────────────────────────────────────── */
 let wakeLock = null;
@@ -1404,7 +1427,8 @@ const nav = {
   profile: vehicle, dest: null,
   coords: [], cum: [], distM: 0, etaS: 0, vAvg: 8,
   remM: 0, remEtaS: 0,
-  destMarker: null, lastNear: null
+  destMarker: null, lastNear: null,
+  offSince: null, rerouting: false, lastReroute: 0
 };
 let navHere = null;                  // laatst bekende GPS-positie {lat,lon}
 let geoTimer = null, geoSeq = 0;
@@ -1621,6 +1645,20 @@ function fmtEta(s){
   return h ? `${h} ${t("eta_hr")} ${m} ${t("eta_min")}` : `${Math.max(1, m)} ${t("eta_min")}`;
 }
 
+/* automatisch herberekenen vanaf de huidige positie wanneer je van de route bent */
+async function navReroute(){
+  if (!navHere || !nav.dest || nav.rerouting) return;
+  nav.rerouting = true;
+  try{
+    applyRoute(await fetchRoute(navHere, nav.dest, nav.profile));
+    drawNavRoute();
+    nav.offSince = null; nav.lastReroute = Date.now();
+    toast(t("nav_rerouted"));
+    render();
+  } catch(e){ /* netwerk/BRouter faalt: oude route laten staan, later opnieuw proberen */ }
+  finally{ nav.rerouting = false; }
+}
+
 /* ── per GPS-fix aangeroepen vanuit onFix() (vóór render) ── */
 function navOnFix(c){
   navHere = { lat:c.latitude, lon:c.longitude };
@@ -1637,11 +1675,25 @@ function navOnFix(c){
   nav.remM = Math.max(0, nav.distM - along);
   nav.remEtaS = nav.remM / (nav.vAvg || 8);
 
-  /* aankomst: dicht bij de bestemming → melden en stoppen */
-  if (nav.remM < 25 || (nav.dest && hv(navHere, nav.dest) < 25)){
+  /* aankomst: pas melden bij échte nabijheid van de bestemming (niet op projectie) */
+  if (nav.dest && hv(navHere, nav.dest) < 30){
     toast(t("nav_arrived"));
     navStop();
+    return;
   }
+
+  /* off-route: loodrechte afstand tot de route; >60 m gedurende >10 s → herbereken
+     (gedebounced, max ~1×/15 s zodat we BRouter niet overvragen) */
+  let offD = Infinity;
+  for (let i = Math.max(0, idx-1); i < Math.min(nav.coords.length-1, idx+1); i++)
+    offD = Math.min(offD, segDist(navHere, nav.coords[i], nav.coords[i+1]).d);
+  if (offD === Infinity) offD = hv(navHere, nav.coords[idx] || navHere);
+
+  if (offD > 60){
+    if (nav.offSince === null) nav.offSince = Date.now();
+    else if (Date.now() - nav.offSince > 10000 && !nav.rerouting
+             && Date.now() - nav.lastReroute > 15000) navReroute();
+  } else nav.offSince = null;
 }
 
 /* ── selecteren & paneelbediening (muteren state → render) ── */
@@ -1683,6 +1735,7 @@ function navStartGuidance(){
 function navStop(){
   nav.coords = []; nav.cum = []; nav.dest = null;
   nav.remM = 0; nav.remEtaS = 0; nav.lastNear = null;
+  nav.offSince = null; nav.rerouting = false;
   clearNavRoute();
   $("navInfoPanel").textContent = "";
   $("navStart").disabled = true;
