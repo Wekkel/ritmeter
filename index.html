@@ -875,8 +875,6 @@ function render(){
 
   /* groot-getal-hint */
   $("exitHint").textContent = t("exit_hint");
-
-  applyMapPadding();
 }
 
 /* kaart-padding uit de werkelijke hoogte van het zichtbare onderpaneel */
@@ -1294,7 +1292,7 @@ function syncSettingsUI(){
 
 /* ── bediening (alle handlers: muteer state/voorkeur → render) ── */
 $("modeBtn").onclick = () => { state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60); };
-$("r-exit").onclick  = () => { state.presentation = "map"; render(); if (map) setTimeout(() => map.resize(), 60); };
+$("r-exit").onclick  = () => { state.presentation = "map"; render(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); }, 60); };
 $("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
 $("unitBtn").onclick  = () => setUnit(!useMph);
@@ -1659,9 +1657,10 @@ function openNavPanel(){
   state.nav = "search";
   renderFavs();
   render();
+  applyMapPadding();
 }
 function closeNavPanel(){
-  if (state.nav === "route"){ render(); return; }     // route loopt: terug naar route-weergave
+  if (state.nav === "route"){ render(); applyMapPadding(); return; }   // route loopt: terug naar route-weergave
   /* alleen-preview → opruimen en terug naar gewone kaart */
   nav.coords = []; nav.cum = []; nav.dest = null;
   nav.remM = 0; nav.remEtaS = 0;
@@ -1671,12 +1670,14 @@ function closeNavPanel(){
   $("navSaveFav").classList.remove("show");
   state.nav = "off";
   render();
+  applyMapPadding();
 }
 function navStartGuidance(){
   if (!nav.coords.length) return;
   state.nav = "route";
   drawNavRoute();
   render();
+  applyMapPadding();
   if (map) setTimeout(() => map.resize(), 60);
 }
 function navStop(){
@@ -1688,6 +1689,7 @@ function navStop(){
   $("navSaveFav").classList.remove("show");
   state.nav = "off";
   render();
+  applyMapPadding();
 }
 
 /* ── voertuig = uitsluitend routeprofiel (raakt nooit de layout) ── */
