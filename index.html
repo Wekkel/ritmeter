@@ -162,6 +162,16 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 #startBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
 #resetBtn{flex:0 0 auto;padding-left:16px;padding-right:16px;color:var(--muted)}
 #resetBtn:disabled{opacity:.35}
+   /* na 'Stop': rit staat op pauze en is nog niet opgeslagen →
+   Opslaan+reset wordt de primaire actie (amber gevuld),
+   Hervat wordt secundair (amber contour) zodat de keuze duidelijk is */
+body[data-measuring="paused"] #resetBtn:not(:disabled){
+  opacity:1;color:#1A1200;background:var(--amber);border-color:var(--amber);
+  animation:savePulse 1.6s ease-in-out infinite}
+body[data-measuring="paused"] #startBtn.go{background:transparent;color:var(--amber)}
+@keyframes savePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,179,0,.45)}
+  50%{box-shadow:0 0 0 6px rgba(255,179,0,0)}}
 /* compactere tripbalk tijdens route (alleen appearance) */
 body[data-nav="route"] #stats{margin-bottom:8px;gap:5px}
 body[data-nav="route"] .stat b{font-size:17px}
