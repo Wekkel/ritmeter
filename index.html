@@ -16,247 +16,279 @@
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
-  :root{
-    --bg:#0B0F14;
-    --panel:rgba(13,19,26,.82);
-    --line:#22303E;
-    --text:#E9EEF3;
-    --muted:#7E8B98;
-    --amber:#FFB300;
-    --digit:#FFB300;       /* instelbare cijferkleur */
-    --ok:#3AD673;
-    --warn:#FFB300;
-    --bad:#FF5252;
-    --radius:18px;
-    --sat:env(safe-area-inset-top,0px);
-    --sab:env(safe-area-inset-bottom,0px);
-    --sal:env(safe-area-inset-left,0px);
-    --sar:env(safe-area-inset-right,0px);
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;touch-action:manipulation;
-    user-select:none;-webkit-user-select:none}
-  button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+/* ═══════════════════════════════════════════════════════════
+   RitMeter — UI-laag (herbouw)
+   Discipline:
+   - zichtbaarheid UITSLUITEND via body[data-*]-selectors
+   - geometrie (positie/grootte) UITSLUITEND in de twee
+     oriëntatie-layouts (@media), niet in de modus
+   - geen !important, geen specificiteit-gevechten
+   ═══════════════════════════════════════════════════════════ */
 
-  #map{position:fixed;inset:0;background:#0B0F14}
-  body.focusmode #map,body.hud #map{visibility:hidden}
-  .maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.6)!important;color:#9aa7b4}
-  .maplibregl-ctrl-attrib a{color:#9aa7b4!important}
+:root{
+  --bg:#0B0F14;
+  --panel:rgba(13,19,26,.82);
+  --line:#22303E;
+  --text:#E9EEF3;
+  --muted:#7E8B98;
+  --amber:#FFB300;
+  --digit:#FFB300;          /* instelbare cijferkleur (token, in render gezet) */
+  --nav:#E000FF;
+  --nav-dark:#3A0A33;
+  --ok:#3AD673;
+  --warn:#FFB300;
+  --bad:#FF5252;
+  --radius:18px;
+  --dim-opacity:0;          /* nachtdimmer (token, in render gezet) */
+  --speed-size:72px;        /* per oriëntatie + presentatie gezet */
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;touch-action:manipulation;
+  user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
 
-  /* ── positiemarker ── */
-  .me{width:46px;height:46px;position:relative}
-  .me::before{content:"";position:absolute;inset:0;border-radius:50%;
-    background:radial-gradient(circle,rgba(255,179,0,.35),transparent 70%)}
-  .me svg{position:absolute;inset:8px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+/* ── kaart: basislaag ─────────────────────────────────────── */
+#map{position:fixed;inset:0;background:#0B0F14}
+.maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.6)!important;color:#9aa7b4}
+.maplibregl-ctrl-attrib a{color:#9aa7b4!important}
 
-  /* ── snelheidscluster ── */
-  #speedCluster{position:fixed;top:calc(var(--sat) + 10px);left:50%;transform:translateX(-50%);
-    z-index:10;background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);border-radius:var(--radius);
-    padding:8px 26px 12px;text-align:center;min-width:196px;
-    box-shadow:0 6px 24px rgba(0,0,0,.45)}
-  #speedVal{font-family:"Chakra Petch",system-ui,sans-serif;font-weight:700;
-    font-size:72px;line-height:1;letter-spacing:.5px;color:var(--text);
-    font-variant-numeric:tabular-nums}
-  #speedVal.moving{color:var(--digit)}
-  #unitBtn{display:block;margin:2px auto 0;font-size:14px;font-weight:600;letter-spacing:.22em;
-    color:var(--muted);text-transform:uppercase;padding:4px 14px;border-radius:99px}
-  #unitBtn:active{color:var(--amber)}
+/* ── positiemarker ── */
+.me{width:46px;height:46px;position:relative}
+.me::before{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,179,0,.35),transparent 70%)}
+.me svg{position:absolute;inset:8px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+.navDest svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
 
-  body.focusmode #speedCluster{top:46%;transform:translate(-50%,-90%);
-    background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-  body.focusmode #speedVal{font-size:min(44vw,200px)}
-  body.focusmode #unitBtn{font-size:20px}
+/* ═══ UI-overlay: één grid over de kaart ═══════════════════
+   pointer-events:none zodat de kaart sleepbaar blijft;
+   interactieve regio's zetten pointer-events weer aan.        */
+#ui{position:fixed;inset:0;z-index:10;display:grid;pointer-events:none;
+  padding:calc(var(--sat) + 10px) calc(var(--sar) + 14px)
+          calc(var(--sab) + 10px) calc(var(--sal) + 14px);
+  gap:10px}
+#ui > *{pointer-events:auto;min-width:0}
 
-  /* ── hoogte & kompas ── */
-  #extra{position:fixed;left:50%;transform:translateX(-50%);z-index:9;
-    top:calc(var(--sat) + 156px);display:none;gap:18px;
-    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);border-radius:99px;padding:8px 18px;
-    font-family:"Chakra Petch",sans-serif;font-size:16px;font-variant-numeric:tabular-nums;
-    color:var(--text);white-space:nowrap}
-  #extra.show{display:flex}
-  #extra .lbl{color:var(--muted);font-family:system-ui,sans-serif;font-size:11px;
-    letter-spacing:.12em;text-transform:uppercase;margin-right:6px;vertical-align:1px}
-  body.focusmode #extra{top:64%}
+/* ── appearance per regio (look, NIET geometrie/zichtbaarheid) ── */
+.panel{background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line)}
 
-  /* ── gps-status ── */
-  #gps{position:fixed;top:calc(var(--sat) + 14px);right:14px;z-index:10;
-    display:flex;align-items:center;gap:7px;background:var(--panel);
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);border-radius:99px;padding:7px 13px;
-    font-size:12px;color:var(--muted)}
-  #gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
-  #gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
-
-  /* ── kompasroos ── */
-  #rose{position:fixed;top:calc(var(--sat) + 60px);right:14px;z-index:9;
-    width:60px;height:60px;border-radius:50%;background:var(--panel);
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);display:none}
-  #rose.show{display:block}
-  body.hud #rose{display:none!important}
-  #rose text{font:700 11px system-ui;fill:var(--muted)}
-  #rose .n{fill:var(--amber)}
-  #roseG{transform-origin:30px 30px;transition:transform .6s linear}
-
-  /* ── knoppen links ── */
-  .fab{width:42px;height:42px;border-radius:50%;background:var(--panel);
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
-  .fab:active{color:var(--amber)}
-  #modeBtn{position:fixed;top:calc(var(--sat) + 14px);left:14px;z-index:10}
-  #setBtn{position:fixed;top:calc(var(--sat) + 66px);left:14px;z-index:10}
-  #histBtn{position:fixed;top:calc(var(--sat) + 118px);left:14px;z-index:10}
-
-  /* ── tripbalk ── */
-  #trip{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 10px);z-index:10;
-    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border:1px solid var(--line);border-radius:var(--radius);
-    padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
-  #stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;text-align:center}
-  .stat b{display:block;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:21px;
-    font-variant-numeric:tabular-nums;color:var(--text)}
-  .stat span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  #btnRow{display:flex;gap:10px}
-  .btn{flex:1;padding:13px 0;border-radius:13px;font-weight:700;font-size:16px;letter-spacing:.04em;
-    border:1px solid var(--line);background:#141C25;transition:transform .06s}
-  .btn:active{transform:scale(.97)}
-  #startBtn.go{background:var(--amber);border-color:var(--amber);color:#1A1200}
-  #startBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
-  #resetBtn{flex:0 0 auto;padding-left:16px;padding-right:16px;color:var(--muted)}
-  #resetBtn:disabled{opacity:.35}
-
-  /* ── HUD ── */
-  body.hud #speedCluster{top:46%;transform:translate(-50%,-55%) scaleX(-1);
-    background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-  body.hud #speedVal{font-size:min(52vw,240px);color:var(--digit)}
-  body.hud #unitBtn{font-size:22px;pointer-events:none}
-  body.hud #trip,body.hud #gps,body.hud #modeBtn,body.hud #setBtn,body.hud #histBtn,
-  body.hud #extra{display:none!important}
-  #hudData{position:fixed;top:66%;left:50%;transform:translateX(-50%) scaleX(-1);z-index:11;
-    display:none;font-family:"Chakra Petch",sans-serif;font-size:26px;
-    font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
-  body.hud.hudinfo #hudData{display:block}
-  #hudExit{position:fixed;inset:0;z-index:40;display:none}
-  body.hud #hudExit{display:block}
-  #hudHint{position:absolute;bottom:calc(var(--sab) + 18px);left:0;right:0;text-align:center;
-    color:var(--muted);font-size:13px;letter-spacing:.08em}
-
-  /* ── nachtdimmer ── */
-  #dim{position:fixed;inset:0;z-index:65;background:#000;opacity:0;pointer-events:none}
-
-  /* ── instellingen ── */
-  #settings{position:fixed;inset:0;z-index:60;display:none;place-items:end center;
-    background:rgba(5,8,11,.6)}
-  #settings.show{display:grid}
-  #setCard{width:100%;max-width:430px;background:#10161E;border:1px solid var(--line);
-    border-radius:var(--radius) var(--radius) 0 0;max-height:82vh;overflow-y:auto;
-    padding:20px 20px calc(var(--sab) + 20px)}
-  #setCard h2{margin:0 0 14px;font-family:"Chakra Petch",sans-serif;font-size:19px;
-    letter-spacing:.04em;color:var(--text)}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;
-    padding:13px 0;border-top:1px solid var(--line)}
-  .row .info b{display:block;font-size:15px;font-weight:600}
-  .row .info span{font-size:12.5px;color:var(--muted);line-height:1.35;display:block;margin-top:2px}
-  .seg{display:flex;background:#0B0F14;border:1px solid var(--line);border-radius:11px;padding:3px;flex:none}
-  .seg button{padding:7px 16px;border-radius:8px;font-size:13.5px;font-weight:700;color:var(--muted)}
-  .seg button.on{background:var(--amber);color:#1A1200}
-  .switch{flex:none;width:50px;height:29px;border-radius:99px;background:#1A232E;
-    border:1px solid var(--line);position:relative;transition:background .2s}
-  .switch::after{content:"";position:absolute;top:2px;left:2px;width:23px;height:23px;
-    border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
-  .switch.on{background:var(--amber)}
-  .switch.on::after{transform:translateX(21px);background:#1A1200}
-  .swatches{display:flex;gap:10px;flex:none}
-  .sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent}
-  .sw.on{border-color:#fff}
-  input[type=range]{accent-color:var(--amber);width:130px;flex:none}
-  #hudGo{flex:none;padding:9px 18px;border-radius:11px;background:#141C25;
-    border:1px solid var(--line);font-weight:700;font-size:13.5px;color:var(--amber)}
-  #setClose{display:block;width:100%;margin-top:18px;padding:13px 0;border-radius:13px;
-    background:var(--amber);color:#1A1200;font-weight:700;font-size:16px}
-
-  /* ── geschiedenis & ritdetail ── */
-  .page{position:fixed;inset:0;z-index:58;display:none;flex-direction:column;background:var(--bg)}
-  .page.show{display:flex}
-  .pageHead{display:flex;align-items:center;gap:12px;
-    padding:calc(var(--sat) + 14px) 16px 12px;border-bottom:1px solid var(--line)}
-  .pageHead h2{margin:0;font-family:"Chakra Petch",sans-serif;font-size:18px;flex:1;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pageHead .fab{width:38px;height:38px}
-  .pageBody{flex:1;overflow-y:auto;padding:14px 16px calc(var(--sab) + 16px)}
-  #histActs{display:flex;gap:8px;margin-bottom:14px}
-  .hbtn{flex:1;padding:10px 6px;border-radius:11px;background:#141C25;
-    border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--text)}
-  .hbtn:active{color:var(--amber)}
-  #histTotals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
-  .tot{background:#10161E;border:1px solid var(--line);border-radius:13px;
-    padding:10px 6px;text-align:center}
-  .tot span{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-  .tot b{display:block;font-family:"Chakra Petch",sans-serif;font-size:15px;
-    font-variant-numeric:tabular-nums;margin-top:3px}
-  .tot i{font-style:normal;font-size:10.5px;color:var(--muted)}
-  .hrow{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;
-    text-align:left;padding:14px 2px;border-bottom:1px solid var(--line)}
-  .hrow .l b{display:block;font-size:15px;font-weight:600}
-  .hrow .l span,.hrow .r span{font-size:12px;color:var(--muted)}
-  .hrow .r{text-align:right}
-  .hrow .r b{display:block;font-family:"Chakra Petch",sans-serif;font-size:18px;
-    font-variant-numeric:tabular-nums;color:var(--amber)}
-  #histEmpty{color:var(--muted);font-size:14px;line-height:1.5;padding:24px 6px;text-align:center}
-
-  #detStats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
-  #detStats .stat{background:#10161E;border:1px solid var(--line);border-radius:13px;
-    padding:12px 10px;text-align:center}
-  #dmap{height:240px;border-radius:13px;overflow:hidden;border:1px solid var(--line);
-    background:#10161E;margin-bottom:14px}
-  #profWrap{background:#10161E;border:1px solid var(--line);border-radius:13px;
-    padding:12px;margin-bottom:14px}
-  #profWrap h3{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted);font-weight:600}
-  #profile{width:100%;height:140px;display:block}
-  #profNote{color:var(--muted);font-size:13px;margin:6px 0 0;display:none}
-  .actRow{display:flex;gap:10px}
-  #shareBtn{flex:1;padding:13px 0;border-radius:13px;background:var(--amber);
-    color:#1A1200;font-weight:700;font-size:15px}
-  #delBtn{flex:0 0 auto;padding:13px 18px;border-radius:13px;background:#2A1313;
-    border:1px solid #5c2727;color:#FF8A8A;font-weight:700;font-size:15px}
-
-  /* ── toast & meldingen ── */
-  #toast{position:fixed;left:50%;bottom:calc(var(--sab) + 110px);transform:translateX(-50%) translateY(10px);
-    z-index:80;background:#1A232E;border:1px solid var(--line);border-radius:99px;
-    padding:10px 20px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;
-    transition:opacity .25s,transform .25s;white-space:nowrap}
-  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-  #notice{position:fixed;inset:0;z-index:70;display:none;place-items:center;
-    background:rgba(11,15,20,.92);padding:30px;text-align:center}
-  #notice.show{display:grid}
-  #notice .card{max-width:340px}
-  #notice h2{font-family:"Chakra Petch",sans-serif;color:var(--amber);margin:0 0 10px}
-  #notice p{color:var(--muted);line-height:1.5;font-size:15px}
-  #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
-    color:#1A1200;font-weight:700}
-/* ═══ navigatie-overlay ═══════════════════════════════════ */
-:root{ --nav:#E000FF; --nav-dark:#3A0A33; }
-
-/* kompas-FAB (vierde knop in de linker rail) */
-#navBtn{position:fixed;top:calc(var(--sat) + 170px);left:14px;z-index:10}
+/* knoppenrail */
+#r-controls{display:flex;flex-direction:column;gap:10px}
+.fab{width:42px;height:42px;border-radius:50%;background:var(--panel);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.fab:active{color:var(--amber)}
 #navBtn:active{color:var(--nav)}
 
-/* ── zoek-/instelpaneel (bottom sheet) ── */
-#navPanel{position:fixed;left:0;right:0;bottom:0;z-index:55;
-  background:#10161E;border-top:1px solid var(--line);
-  border-radius:var(--radius) var(--radius) 0 0;
-  padding:10px 16px calc(var(--sab) + 16px);
-  max-height:76vh;overflow-y:auto;
-  transform:translateY(110%);transition:transform .28s ease;
-  box-shadow:0 -8px 30px rgba(0,0,0,.5)}
-#navPanel.show{transform:none}
-.navGrip{width:42px;height:5px;border-radius:99px;background:var(--line);
-  margin:2px auto 12px}
+/* snelheidscluster */
+#r-speed{align-self:start;justify-self:center;text-align:center;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:8px 26px 12px;min-width:196px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#speedVal{font-family:"Chakra Petch",system-ui,sans-serif;font-weight:700;
+  font-size:var(--speed-size);line-height:1;letter-spacing:.5px;color:var(--text);
+  font-variant-numeric:tabular-nums}
+#speedVal.moving{color:var(--digit)}
+#unitBtn{display:block;margin:2px auto 0;font-size:14px;font-weight:600;letter-spacing:.22em;
+  color:var(--muted);text-transform:uppercase;padding:4px 14px;border-radius:99px}
+#unitBtn:active{color:var(--amber)}
+
+/* gps-status */
+#r-status{justify-self:end;align-self:start;display:flex;align-items:center;gap:7px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:99px;padding:7px 13px;font-size:12px;color:var(--muted)}
+#gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
+#gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
+
+/* kompasroos */
+#r-compass{justify-self:end;align-self:start;width:60px;height:60px;border-radius:50%;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line)}
+#r-compass text{font:700 11px system-ui;fill:var(--muted)}
+#r-compass .n{fill:var(--amber)}
+#roseG{transform-origin:30px 30px;transition:transform .6s linear}
+
+/* hoogte & koers */
+#r-altitude{justify-self:center;align-self:start;display:flex;gap:18px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:99px;padding:8px 18px;
+  font-family:"Chakra Petch",sans-serif;font-size:16px;font-variant-numeric:tabular-nums;
+  color:var(--text);white-space:nowrap}
+#r-altitude .lbl{color:var(--muted);font-family:system-ui,sans-serif;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;margin-right:6px;vertical-align:1px}
+
+/* centreerknop */
+#r-recenter{justify-self:end;align-self:end}
+#r-recenter:active{color:var(--amber)}
+
+/* nav-info: rustige regel met resterende afstand + ETA */
+#r-navinfo{align-self:end;display:flex;align-items:center;gap:10px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--nav);border-radius:99px;padding:8px 14px;
+  font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  box-shadow:0 4px 16px rgba(0,0,0,.4)}
+#r-navinfo .nf{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#r-navinfo b{font-family:"Chakra Petch",sans-serif;font-size:16px;color:var(--text)}
+#navRecalc{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:#141C25;border:1px solid var(--line);color:var(--muted)}
+#navRecalc:active{color:var(--nav)}
+#navStopBtn{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:#2A1313;border:1px solid #5c2727;color:#FF8A8A;font-size:20px;line-height:1}
+
+/* tripbalk */
+#r-trip{align-self:end;background:var(--panel);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;text-align:center}
+.stat b{display:block;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:21px;
+  font-variant-numeric:tabular-nums;color:var(--text)}
+.stat span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+#btnRow{display:flex;gap:10px}
+.btn{flex:1;padding:13px 0;border-radius:13px;font-weight:700;font-size:16px;letter-spacing:.04em;
+  border:1px solid var(--line);background:#141C25;transition:transform .06s}
+.btn:active{transform:scale(.97)}
+#startBtn.go{background:var(--amber);border-color:var(--amber);color:#1A1200}
+#startBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
+#resetBtn{flex:0 0 auto;padding-left:16px;padding-right:16px;color:var(--muted)}
+#resetBtn:disabled{opacity:.35}
+/* compactere tripbalk tijdens route (alleen appearance) */
+body[data-nav="route"] #stats{margin-bottom:8px;gap:5px}
+body[data-nav="route"] .stat b{font-size:17px}
+body[data-nav="route"] .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
+
+/* schermvullend tikvlak om uit groot-getal te gaan */
+#r-exit{position:fixed;inset:0;z-index:11;background:transparent}
+#r-exit #exitHint{position:absolute;left:0;right:0;bottom:calc(var(--sab) + 18px);
+  text-align:center;color:var(--muted);font-size:13px;letter-spacing:.08em}
+
+/* nachtdimmer: bovenop alles, vangt geen tikken */
+#dim{position:fixed;inset:0;z-index:65;background:#000;opacity:var(--dim-opacity);pointer-events:none}
+
+/* ═══ ZICHTBAARHEID — uitsluitend body[data-*] ═════════════
+   Elk eindresultaat wordt door precies één winnende regel
+   bepaald; geen volgorde-afhankelijke override-stapels.      */
+
+/* groot-getal verbergt de hele kaart-chrome */
+body[data-presentation="big"] #map,
+body[data-presentation="big"] #r-controls,
+body[data-presentation="big"] #r-status,
+body[data-presentation="big"] #r-compass,
+body[data-presentation="big"] #r-altitude,
+body[data-presentation="big"] #r-trip,
+body[data-presentation="big"] #r-navinfo,
+body[data-presentation="big"] #r-recenter,
+body[data-presentation="big"] #navPanel{display:none}
+
+/* kompas & hoogte: alleen in kaart-stand én als voorkeur aan */
+#r-compass{display:none}
+body[data-presentation="map"][data-compass="on"] #r-compass{display:block}
+#r-altitude{display:none}
+body[data-presentation="map"][data-altitude="on"] #r-altitude{display:flex}
+
+/* centreerknop: alleen in kaart-stand én als de kaart versleept is */
+#r-recenter{display:none}
+body[data-presentation="map"][data-dragged="yes"] #r-recenter{display:grid}
+
+/* nav-info: alleen in kaart-stand tijdens route */
+#r-navinfo{display:none}
+body[data-presentation="map"][data-nav="route"] #r-navinfo{display:flex}
+
+/* zoekpaneel: alleen in kaart-stand tijdens search (slide via transform) */
+body[data-presentation="map"][data-nav="search"] #navPanel{transform:none}
+
+/* schermvullend tikvlak: alleen in groot-getal */
+#r-exit{display:none}
+body[data-presentation="big"] #r-exit{display:block}
+
+/* groot-getal: snelheid centreren + vergroten; spiegelen alleen hier */
+body[data-presentation="big"] #r-speed{grid-area:1 / 1 / -1 / -1;place-self:center;
+  background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+body[data-presentation="big"] #unitBtn{font-size:20px;pointer-events:none}
+body[data-presentation="big"][data-mirror="on"] #speedVal{transform:scaleX(-1)}
+
+/* modale overlays */
+#settings,#hist,#detail{display:none}
+body[data-overlay="settings"] #settings{display:grid}
+body[data-overlay="history"] #hist{display:flex}
+body[data-overlay="detail"] #detail{display:flex}
+
+/* ═══ LAYOUT A — PORTRET (volledige, op zichzelf staande plattegrond) ═══ */
+@media (orientation:portrait){
+  :root{--speed-size:72px}
+  body[data-presentation="big"]{--speed-size:min(46vw,210px)}
+
+  #ui{
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto auto 1fr auto auto;
+    grid-template-areas:
+      "controls speed    status"
+      "controls altitude compass"
+      "controls .        recenter"
+      "navinfo  navinfo  navinfo"
+      "trip     trip     trip";
+  }
+  #r-controls{grid-area:controls}
+  #r-speed{grid-area:speed}
+  #r-status{grid-area:status}
+  #r-compass{grid-area:compass}
+  #r-altitude{grid-area:altitude}
+  #r-recenter{grid-area:recenter}
+  #r-navinfo{grid-area:navinfo}
+  #r-trip{grid-area:trip}
+
+  /* zoekpaneel = bottom sheet */
+  #navPanel{position:fixed;left:0;right:0;bottom:0;
+    border-radius:var(--radius) var(--radius) 0 0;border-top:1px solid var(--line);
+    transform:translateY(110%)}
+}
+
+/* ═══ LAYOUT B — LIGGEND (volledige, op zichzelf staande plattegrond) ═══ */
+@media (orientation:landscape){
+  :root{--speed-size:46px}
+  body[data-presentation="big"]{--speed-size:min(48vh,230px)}
+
+  #ui{
+    grid-template-columns:auto auto 1fr auto;
+    grid-template-rows:auto auto 1fr auto;
+    grid-template-areas:
+      "controls speed    .       status"
+      "controls .        .       compass"
+      "controls trip     .       recenter"
+      "controls trip     navinfo navinfo";
+  }
+  #r-controls{grid-area:controls}
+  #r-speed{grid-area:speed;justify-self:start;min-width:0;padding:6px 18px 8px}
+  #r-status{grid-area:status}
+  #r-compass{grid-area:compass}
+  #r-altitude{display:none}                 /* hoogte-uitlezing alleen relevant in portret */
+  #r-recenter{grid-area:recenter}
+  #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(360px,46vw)}
+  #r-trip{grid-area:trip;align-self:end;justify-self:start;width:min(440px,46vw)}
+  #r-trip #stats{margin-bottom:8px;gap:5px}
+  #r-trip .stat b{font-size:16.5px}
+  #r-trip .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
+
+  /* in liggend toont hoogte/kompas niet via voorkeur; herstel kompas alleen */
+  body[data-presentation="map"][data-altitude="on"] #r-altitude{display:none}
+
+  /* zoekpaneel = linker kolom */
+  #navPanel{position:fixed;left:calc(var(--sal) + 10px);right:auto;
+    top:calc(var(--sat) + 10px);bottom:calc(var(--sab) + 10px);
+    width:min(380px,44vw);border-radius:var(--radius);border:1px solid var(--line);
+    transform:translateX(-115%)}
+}
+
+/* ── zoekpaneel (bottom sheet / linker kolom) ── */
+#navPanel{z-index:55;background:#10161E;
+  padding:10px 16px calc(var(--sab) + 16px);max-height:76vh;overflow-y:auto;
+  transition:transform .28s ease;box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+.navGrip{width:42px;height:5px;border-radius:99px;background:var(--line);margin:2px auto 12px}
 .navTop{display:flex;gap:10px;align-items:center;margin-bottom:10px}
 #navSearch{flex:1;min-width:0;background:#0B0F14;border:1px solid var(--line);
   border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;outline:none}
@@ -265,15 +297,12 @@
   border:1px solid var(--line);font-size:22px;line-height:1;color:var(--muted);
   display:grid;place-items:center}
 .navX:active{color:var(--nav)}
-
 #navResults:empty,#navFavs:empty{display:none}
-.navRes{width:100%;display:block;text-align:left;padding:11px 12px;
-  border-bottom:1px solid var(--line)}
+.navRes{width:100%;display:block;text-align:left;padding:11px 12px;border-bottom:1px solid var(--line)}
 .navRes b{display:block;font-size:15px;font-weight:600;color:var(--text)}
 .navRes span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
 .navRes:active{background:#141C25}
 .navMsg{color:var(--muted);font-size:13px;padding:10px 2px}
-
 #navFavs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
 .navChip{display:flex;align-items:center;background:#141C25;border:1px solid var(--line);
   border-radius:99px;overflow:hidden}
@@ -281,280 +310,205 @@
   max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .navChipX{padding:9px 12px 9px 6px;font-size:15px;color:var(--muted)}
 .navChipX:active{color:var(--bad)}
-
-.navSeg{display:flex;background:#0B0F14;border:1px solid var(--line);
-  border-radius:12px;padding:3px;margin:12px 0 0;gap:3px}
-.navSeg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;
-  color:var(--muted);white-space:nowrap}
-.navSeg button.on{background:var(--nav);color:#fff}
-
-.navInfo{margin:12px 0;min-height:20px;font-size:14px;color:var(--muted);
-  font-variant-numeric:tabular-nums}
+.navInfo{margin:12px 0;min-height:20px;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
 .navInfo b{font-family:"Chakra Petch",sans-serif;font-size:18px;color:var(--text)}
-
 .navBtns{display:flex;gap:10px}
 #navStart{flex:1;padding:14px 0;border-radius:13px;background:var(--nav);
   color:#fff;font-weight:700;font-size:16px;border:1px solid var(--nav)}
 #navStart:disabled{opacity:.4;background:#141C25;border-color:var(--line);color:var(--muted)}
 #navSaveFav{flex:0 0 auto;width:52px;border-radius:13px;background:#141C25;
-  border:1px solid var(--line);font-size:20px;color:var(--amber);display:none;
-  place-items:center}
-
-/* ── turn-by-turn HUD-balk (bovenin) ── */
-#navHud{position:fixed;top:calc(var(--sat) + 10px);left:10px;right:10px;z-index:30;
-  display:none;align-items:center;gap:14px;
-  background:rgba(13,19,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--nav);border-radius:16px;padding:10px 12px;
-  box-shadow:0 6px 24px rgba(0,0,0,.5)}
-#navHud.show{display:flex}
-#navArrow{flex:none;width:42px;height:42px;display:grid;place-items:center;color:var(--nav)}
-.navHudText{flex:1;min-width:0}
-.navHudText b{display:block;font-family:"Chakra Petch",sans-serif;font-size:26px;
-  line-height:1.05;color:var(--text);font-variant-numeric:tabular-nums}
-.navHudText span{display:block;font-size:12px;color:var(--muted);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.navStop{flex:none;width:38px;height:38px;border-radius:50%;background:#2A1313;
-  border:1px solid #5c2727;color:#FF8A8A;font-size:20px;display:grid;place-items:center}
-
-/* bestemmingspin op de kaart */
-.navDest svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
-
-/* zodra er genavigeerd wordt: bestaande UI naar onder, HUD krijgt ruimte bovenin */
-body.navigating #speedCluster{top:calc(var(--sat) + 92px)}
-body.navigating #gps{top:calc(var(--sat) + 92px)}
-body.navigating #modeBtn{top:calc(var(--sat) + 92px)}
-body.navigating #setBtn{top:calc(var(--sat) + 144px)}
-body.navigating #histBtn{top:calc(var(--sat) + 196px)}
-body.navigating #navBtn{top:calc(var(--sat) + 248px)}
-body.navigating #extra,body.navigating #rose{display:none!important}
-
-/* HUD-/focus-modus en navigatie sluiten elkaar uit */
-body.hud #navHud,body.focusmode #navHud{display:none!important}
-body.hud #navBtn,body.focusmode #navBtn,body.hud #navPanel,body.focusmode #navPanel{
-  display:none!important}
-
-/* ═══ LANDSCAPE: brede panelen naar de zijkanten, kaart vrij ═══ */
-@media (orientation: landscape){
-  /* snelheidscluster compact naar links-boven i.p.v. centraal */
-  #speedCluster{left:14px;transform:none;top:calc(var(--sat) + 10px);
-    min-width:0;padding:6px 18px 8px}
-  #speedVal{font-size:46px}
-  body.navigating #speedCluster{top:calc(var(--sat) + 64px)}
-
-  /* zoekpaneel als linker kolom i.p.v. bottom sheet */
-  #navPanel{left:10px;right:auto;top:calc(var(--sat) + 10px);
-    bottom:calc(var(--sab) + 10px);width:min(380px,44vw);
-    border-radius:var(--radius);border:1px solid var(--line);
-    transform:translateX(-115%)}
-  #navPanel.show{transform:none}
-  .navChipGo{max-width:200px}
-
-  /* HUD-balk rechts-boven, smal — kaart in het midden blijft vrij */
-  #navHud{left:auto;right:14px;top:calc(var(--sat) + 10px);width:min(340px,42vw)}
-  body.navigating #speedCluster{top:calc(var(--sat) + 10px)} /* HUD staat rechts, geen overlap */
-  body.navigating #gps,body.navigating #modeBtn{top:calc(var(--sat) + 10px)}
-  body.navigating #setBtn{top:calc(var(--sat) + 62px)}
-  body.navigating #histBtn{top:calc(var(--sat) + 114px)}
-  body.navigating #navBtn{top:calc(var(--sat) + 166px)}
-
-  
-}
-  /* ═══ Fase B: meten + navigatie samen ═══════════════════════ */
-
-/* slanke trip-regel: verschijnt tijdens navigatie (niet bij auto = nav-first) */
-#navTrip{position:fixed;z-index:31;display:none;align-items:center;gap:8px;
-  left:50%;transform:translateX(-50%);bottom:calc(var(--sab) + 12px);
-  background:rgba(13,19,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--line);border-radius:99px;padding:5px 14px 5px 5px;
-  box-shadow:0 4px 16px rgba(0,0,0,.45);max-width:calc(100vw - 24px)}
-#navTrip .tt{font-family:"Chakra Petch",sans-serif;font-size:13.5px;color:var(--text);
-  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#navTripBtn{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
-  background:var(--amber);border:1px solid var(--amber);color:#1A1200}
-#navTripBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
-
-/* tijdens navigatie: groot tripblok weg, slanke regel erbij (behalve auto) */
-body.navigating #trip{display:none!important}
-body.navigating:not(.navfirst) #navTrip{display:flex}
-
-/* auto = nav-first: helemaal geen meten-blok */
-body.navfirst #trip{display:none!important}
-
-/* HUD-/focusmodus: slanke regel ook verbergen */
-body.hud #navTrip,body.focusmode #navTrip{display:none!important}
-
-/* voertuigkeuze in instellingen */
-#vehSeg{display:flex;gap:4px;background:#0B0F14;border:1px solid var(--line);
-  border-radius:11px;padding:3px}
-#vehSeg button{flex:1;padding:8px 4px;border-radius:8px;font-size:12.5px;font-weight:700;
-  color:var(--muted);white-space:nowrap}
-#vehSeg button.on{background:var(--amber);color:#1A1200}
-
-/* landscape: slanke regel naar de rechterkolom, onder de HUD */
-@media (orientation: landscape){
-  #navTrip{left:auto;right:14px;transform:none;bottom:auto;
-    top:calc(var(--sat) + 78px);max-width:min(340px,42vw)}
-}
-  /* herberekenen-status in de HUD */
-#navHud.rerouting{border-color:var(--amber)}
-@keyframes navPulse{0%,100%{opacity:1}50%{opacity:.45}}
-#navHud.rerouting #navArrow{animation:navPulse 1s ease-in-out infinite;color:var(--amber)}
-
-/* favoriet-ster: standaard witte omlijning, geel gevuld als favoriet */
-#navSaveFav{color:var(--text)}
+  border:1px solid var(--line);font-size:20px;color:var(--text);display:none;place-items:center}
+#navSaveFav.show{display:grid}
 #navSaveFav svg{fill:none}
 #navSaveFav.on{color:var(--amber)}
 #navSaveFav.on svg{fill:var(--amber)}
 
-/* centreerknop: verschijnt als je de kaart hebt versleept */
-#recenterBtn{position:fixed;right:14px;bottom:calc(var(--sab) + 136px);z-index:12;display:none}
-#recenterBtn.show{display:grid}
-#recenterBtn:active{color:var(--amber)}
-body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
+/* ── instellingen ── */
+#settings{position:fixed;inset:0;z-index:60;place-items:end center;background:rgba(5,8,11,.6)}
+#setCard{width:100%;max-width:430px;background:#10161E;border:1px solid var(--line);
+  border-radius:var(--radius) var(--radius) 0 0;max-height:82vh;overflow-y:auto;
+  padding:20px 20px calc(var(--sab) + 20px)}
+#setCard h2{margin:0 0 14px;font-family:"Chakra Petch",sans-serif;font-size:19px;
+  letter-spacing:.04em;color:var(--text)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:13px 0;border-top:1px solid var(--line)}
+.row .info b{display:block;font-size:15px;font-weight:600}
+.row .info span{font-size:12.5px;color:var(--muted);line-height:1.35;display:block;margin-top:2px}
+.seg{display:flex;background:#0B0F14;border:1px solid var(--line);border-radius:11px;padding:3px;flex:none}
+.seg button{padding:7px 16px;border-radius:8px;font-size:13.5px;font-weight:700;color:var(--muted)}
+.seg button.on{background:var(--amber);color:#1A1200}
+.switch{flex:none;width:50px;height:29px;border-radius:99px;background:#1A232E;
+  border:1px solid var(--line);position:relative;transition:background .2s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:23px;height:23px;
+  border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.switch.on{background:var(--amber)}
+.switch.on::after{transform:translateX(21px);background:#1A1200}
+.swatches{display:flex;gap:10px;flex:none}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent}
+.sw.on{border-color:#fff}
+input[type=range]{accent-color:var(--amber);width:130px;flex:none}
+#vehSeg{display:flex;gap:4px;background:#0B0F14;border:1px solid var(--line);border-radius:11px;padding:3px}
+#vehSeg button{flex:1;padding:8px 4px;border-radius:8px;font-size:12.5px;font-weight:700;
+  color:var(--muted);white-space:nowrap}
+#vehSeg button.on{background:var(--amber);color:#1A1200}
+#setClose{display:block;width:100%;margin-top:18px;padding:13px 0;border-radius:13px;
+  background:var(--amber);color:#1A1200;font-weight:700;font-size:16px}
 
-  @media (orientation: landscape){
-  /* iPhone Dynamic Island / notch: linker- en rechtercontrols vrijhouden */
-  #modeBtn,#setBtn,#histBtn,#navBtn{left:calc(var(--sal) + 14px)}
-  #speedCluster{left:calc(var(--sal) + 66px)}      /* rechts van de knoppenrail */
-  #gps,#rose,#navHud,#navTrip,#recenterBtn{right:calc(var(--sar) + 14px)}
-  /* grote tripbalk houdt de knoppenrail links vrij */
-  #trip{left:calc(var(--sal) + 70px);right:calc(var(--sar) + 14px)}
-}
+/* ── geschiedenis & ritdetail ── */
+.page{position:fixed;inset:0;z-index:58;flex-direction:column;background:var(--bg)}
+.pageHead{display:flex;align-items:center;gap:12px;
+  padding:calc(var(--sat) + 14px) 16px 12px;border-bottom:1px solid var(--line)}
+.pageHead h2{margin:0;font-family:"Chakra Petch",sans-serif;font-size:18px;flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pageHead .fab{width:38px;height:38px}
+.pageBody{flex:1;overflow-y:auto;padding:14px 16px calc(var(--sab) + 16px)}
+#histActs{display:flex;gap:8px;margin-bottom:14px}
+.hbtn{flex:1;padding:10px 6px;border-radius:11px;background:#141C25;
+  border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--text)}
+.hbtn:active{color:var(--amber)}
+#histTotals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tot{background:#10161E;border:1px solid var(--line);border-radius:13px;padding:10px 6px;text-align:center}
+.tot span{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tot b{display:block;font-family:"Chakra Petch",sans-serif;font-size:15px;
+  font-variant-numeric:tabular-nums;margin-top:3px}
+.tot i{font-style:normal;font-size:10.5px;color:var(--muted)}
+.hrow{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  text-align:left;padding:14px 2px;border-bottom:1px solid var(--line)}
+.hrow .l b{display:block;font-size:15px;font-weight:600}
+.hrow .l span,.hrow .r span{font-size:12px;color:var(--muted)}
+.hrow .r{text-align:right}
+.hrow .r b{display:block;font-family:"Chakra Petch",sans-serif;font-size:18px;
+  font-variant-numeric:tabular-nums;color:var(--amber)}
+#histEmpty{color:var(--muted);font-size:14px;line-height:1.5;padding:24px 6px;text-align:center}
+#detStats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+#detStats .stat{background:#10161E;border:1px solid var(--line);border-radius:13px;
+  padding:12px 10px;text-align:center}
+#dmap{height:240px;border-radius:13px;overflow:hidden;border:1px solid var(--line);
+  background:#10161E;margin-bottom:14px}
+#profWrap{background:#10161E;border:1px solid var(--line);border-radius:13px;padding:12px;margin-bottom:14px}
+#profWrap h3{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);font-weight:600}
+#profile{width:100%;height:140px;display:block}
+#profNote{color:var(--muted);font-size:13px;margin:6px 0 0;display:none}
+.actRow{display:flex;gap:10px}
+#shareBtn{flex:1;padding:13px 0;border-radius:13px;background:var(--amber);
+  color:#1A1200;font-weight:700;font-size:15px}
+#delBtn{flex:0 0 auto;padding:13px 18px;border-radius:13px;background:#2A1313;
+  border:1px solid #5c2727;color:#FF8A8A;font-weight:700;font-size:15px}
 
-  /* focus- en HUD-weergave in landscape: groot getal gecentreerd, knoppenrail links vrij */
-@media (orientation: landscape){
-  body.focusmode #speedCluster{
-    left:50%; right:auto; top:50%;
-    transform:translate(-50%,-50%);
-    text-align:center;
-  }
-  body.focusmode #speedVal{ font-size:min(42vh,190px); }
-
-  body.hud #speedCluster{
-    left:50%; right:auto; top:50%;
-    transform:translate(-50%,-50%) scaleX(-1);
-  }
-  body.hud #speedVal{ font-size:min(48vh,230px); }
-
-  /* terugknop altijd boven de meter, voor de zekerheid */
-  body.focusmode #modeBtn{ z-index:20; }
-}
-  @media (orientation: landscape){
-  /* compact, smal trip-eiland (compactheid 32 / breedte 42%) — laat de positiedriehoek vrij */
-  #trip{
-    left:calc(var(--sal) + 70px);
-    right:auto;
-    width:42%;
-    max-width:460px;
-    padding:8px 13px;
-  }
-  #stats{ margin-bottom:8px; gap:5px; }
-  .stat b{ font-size:16.5px; }
-  .stat span{ font-size:9px; letter-spacing:.1em; }
-  #trip .btn{ padding-top:10px; padding-bottom:10px; font-size:14px; }
-}
+/* ── toast & meldingen ── */
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 110px);
+  transform:translateX(-50%) translateY(10px);z-index:80;background:#1A232E;
+  border:1px solid var(--line);border-radius:99px;padding:10px 20px;font-size:14px;
+  font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#notice{position:fixed;inset:0;z-index:70;display:none;place-items:center;
+  background:rgba(11,15,20,.92);padding:30px;text-align:center}
+#notice.show{display:grid}
+#notice .card{max-width:340px}
+#notice h2{font-family:"Chakra Petch",sans-serif;color:var(--amber);margin:0 0 10px}
+#notice p{color:var(--muted);line-height:1.5;font-size:15px}
+#notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
+  color:#1A1200;font-weight:700}
 </style>
 </head>
-<body>
+<body data-presentation="map" data-nav="off" data-overlay="none" data-mirror="off"
+      data-compass="on" data-altitude="off" data-measuring="idle" data-dragged="no">
 
 <div id="map"></div>
 
-<button id="modeBtn" class="fab" aria-label="view">
- <svg id="modeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17a8 8 0 1 1 14 0"/><path d="M12 13l4-3"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/></svg>
-</button>
-<button id="setBtn" class="fab" aria-label="settings">
-  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-</button>
-<button id="histBtn" class="fab" aria-label="history">
-  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-</button>
-<button id="navBtn" class="fab" aria-label="navigation">
-  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-</button>
-  <button id="recenterBtn" class="fab" aria-label="center">
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>
-</button>
+<!-- ═══ UI-overlay: alle regio's in één grid ═══ -->
+<div id="ui">
 
-<div id="speedCluster">
-  <div id="speedVal">--</div>
-  <button id="unitBtn" aria-label="unit">km/u</button>
-</div>
-
-<div id="extra">
-  <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
-  <span><span class="lbl" id="lblHdg">koers</span><span id="hdgVal">—</span></span>
-</div>
-
-<div id="gps"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
-
-<div id="rose"><svg viewBox="0 0 60 60">
-  <g id="roseG">
-    <circle cx="30" cy="30" r="24" fill="none" stroke="#22303E"/>
-    <text id="rN" class="n" x="30" y="18" text-anchor="middle">N</text>
-    <text id="rE" x="44" y="34" text-anchor="middle">O</text>
-    <text id="rS" x="30" y="48" text-anchor="middle">Z</text>
-    <text id="rW" x="16" y="34" text-anchor="middle">W</text>
-  </g>
-  <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
-</svg></div>
-
-<div id="trip">
-  <div id="stats">
-    <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
-    <div class="stat"><b id="stTime">0:00</b><span id="stTimeU">tijd</span></div>
-    <div class="stat"><b id="stAvg">0</b><span id="stAvgU">gem km/u</span></div>
-    <div class="stat"><b id="stMax">0</b><span id="stMaxU">max km/u</span></div>
+  <div id="r-controls">
+    <button id="modeBtn" class="fab" aria-label="groot getal">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+    </button>
+    <button id="setBtn" class="fab" aria-label="instellingen">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button id="histBtn" class="fab" aria-label="geschiedenis">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+    </button>
+    <button id="navBtn" class="fab" aria-label="navigatie">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+    </button>
   </div>
-  <div id="btnRow">
-    <button id="startBtn" class="btn go">Start rit</button>
-    <button id="resetBtn" class="btn" disabled>Reset</button>
+
+  <div id="r-speed">
+    <div id="speedVal">--</div>
+    <button id="unitBtn" aria-label="eenheid">km/u</button>
   </div>
-</div>
 
-<!-- turn-by-turn HUD -->
-<div id="navHud">
-  <div id="navArrow"></div>
-  <div class="navHudText"><b id="navDist">—</b><span id="navStreet"></span></div>
-  <button id="navStopBtn" class="navStop" aria-label="stop">×</button>
-</div>
+  <div id="r-status"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
 
-  <!-- slanke trip-regel tijdens navigatie (meten + navigeren samen) -->
-<div id="navTrip">
-  <button id="navTripBtn" aria-label="trip"></button>
-  <span class="tt" id="navTripTxt">—</span>
-</div>
+  <div id="r-compass"><svg viewBox="0 0 60 60">
+    <g id="roseG">
+      <circle cx="30" cy="30" r="24" fill="none" stroke="#22303E"/>
+      <text id="rN" class="n" x="30" y="18" text-anchor="middle">N</text>
+      <text id="rE" x="44" y="34" text-anchor="middle">O</text>
+      <text id="rS" x="30" y="48" text-anchor="middle">Z</text>
+      <text id="rW" x="16" y="34" text-anchor="middle">W</text>
+    </g>
+    <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
+  </svg></div>
 
-<!-- navigatiepaneel -->
+  <div id="r-altitude">
+    <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
+    <span><span class="lbl" id="lblHdg">koers</span><span id="hdgVal">—</span></span>
+  </div>
+
+  <button id="r-recenter" class="fab" aria-label="centreren">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>
+  </button>
+
+  <div id="r-navinfo">
+    <span class="nf" id="navInfoTxt">—</span>
+    <button id="navRecalc" aria-label="herbereken">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <button id="navStopBtn" aria-label="stop navigatie">×</button>
+  </div>
+
+  <div id="r-trip">
+    <div id="stats">
+      <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
+      <div class="stat"><b id="stTime">0:00</b><span id="stTimeU">tijd</span></div>
+      <div class="stat"><b id="stAvg">0</b><span id="stAvgU">gem km/u</span></div>
+      <div class="stat"><b id="stMax">0</b><span id="stMaxU">max km/u</span></div>
+    </div>
+    <div id="btnRow">
+      <button id="startBtn" class="btn go">Start rit</button>
+      <button id="resetBtn" class="btn" disabled>Reset</button>
+    </div>
+  </div>
+
+</div><!-- /#ui -->
+
+<!-- schermvullend tikvlak om uit groot-getal te keren -->
+<button id="r-exit" aria-label="terug naar kaart"><span id="exitHint"></span></button>
+
+<!-- zoekpaneel (alleen kaart-stand, nav=search) -->
 <div id="navPanel">
   <div class="navGrip"></div>
   <div class="navTop">
     <input id="navSearch" type="search" inputmode="search" autocomplete="off"
            autocapitalize="off" spellcheck="false" placeholder="Zoek bestemming">
-    <button id="navClose" class="navX" aria-label="close">×</button>
+    <button id="navClose" class="navX" aria-label="sluiten">×</button>
   </div>
   <div id="navResults"></div>
   <div id="navFavs"></div>
-  <div class="navSeg" id="navProfiles">
-    <button data-p="car" class="on">Auto</button>
-    <button data-p="bike">Fiets</button>
-    <button data-p="moped">Bromfiets</button>
-    <button data-p="snor">Snorfiets</button>
-  </div>
- 
-  <div id="navInfo" class="navInfo"></div>
+  <div id="navInfoPanel" class="navInfo"></div>
   <div class="navBtns">
     <button id="navStart" disabled>Start navigatie</button>
-    <button id="navSaveFav" aria-label="save"><svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.3l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.6 6.8 19.3l1-5.8L3.6 9.4l5.8-.8z"/></svg></button>
+    <button id="navSaveFav" aria-label="opslaan"><svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.3l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.6 6.8 19.3l1-5.8L3.6 9.4l5.8-.8z"/></svg></button>
   </div>
 </div>
-  
-<div id="hudData"></div>
-<button id="hudExit"><span id="hudHint"></span></button>
 
 <!-- geschiedenis -->
 <div id="hist" class="page">
   <div class="pageHead">
-    <button id="histClose" class="fab" aria-label="close">←</button>
+    <button id="histClose" class="fab" aria-label="sluiten">←</button>
     <h2 id="histTitle">Geschiedenis</h2>
   </div>
   <div class="pageBody">
@@ -573,7 +527,7 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
 <!-- ritdetail -->
 <div id="detail" class="page">
   <div class="pageHead">
-    <button id="detBack" class="fab" aria-label="back">←</button>
+    <button id="detBack" class="fab" aria-label="terug">←</button>
     <h2 id="detTitle"></h2>
   </div>
   <div class="pageBody">
@@ -590,9 +544,6 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
     </div>
   </div>
 </div>
-
-<div id="dim"></div>
-<div id="toast"></div>
 
 <!-- instellingen -->
 <div id="settings"><div id="setCard">
@@ -617,10 +568,15 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
       <button data-p="snor">Snorfiets</button>
     </div>
   </div>
-  
+
   <div class="row">
-    <div class="info"><b id="lblExtra"></b><span id="dscExtra"></span></div>
-    <button id="extraSw" class="switch" role="switch"></button>
+    <div class="info"><b id="lblCompass"></b><span id="dscCompass"></span></div>
+    <button id="compassSw" class="switch" role="switch"></button>
+  </div>
+
+  <div class="row">
+    <div class="info"><b id="lblAltitude"></b><span id="dscAltitude"></span></div>
+    <button id="altSw" class="switch" role="switch"></button>
   </div>
 
   <div class="row">
@@ -638,13 +594,13 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
   </div>
 
   <div class="row">
-    <div class="info"><b id="lblAP"></b><span id="dscAP"></span></div>
-    <button id="apSw" class="switch" role="switch"></button>
+    <div class="info"><b id="lblMirror"></b><span id="dscMirror"></span></div>
+    <button id="mirrorSw" class="switch" role="switch"></button>
   </div>
 
   <div class="row">
-    <div class="info"><b id="lblHudInfo"></b><span id="dscHudInfo"></span></div>
-    <button id="hudInfoSw" class="switch" role="switch"></button>
+    <div class="info"><b id="lblAP"></b><span id="dscAP"></span></div>
+    <button id="apSw" class="switch" role="switch"></button>
   </div>
 
   <div class="row">
@@ -652,14 +608,12 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
     <input type="range" id="dimRange" min="0" max="60" step="5" value="0">
   </div>
 
-  <div class="row">
-    <div class="info"><b id="lblHud"></b><span id="dscHud"></span></div>
-    <button id="hudGo"></button>
-  </div>
-
   <button id="setClose">Sluiten</button>
   <p id="appVer" style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter</p>
 </div></div>
+
+<div id="dim"></div>
+<div id="toast"></div>
 
 <div id="notice"><div class="card">
   <h2 id="ntcTitle"></h2><p id="ntcText"></p><button id="ntcBtn"></button>
@@ -669,15 +623,35 @@ body.focusmode #recenterBtn,body.hud #recenterBtn{display:none!important}
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════
-   RitMeter v3
-   - ritgeschiedenis in IndexedDB + GPX-export & delen
-   - adaptief snelheidsfilter + stilstanddetectie
-   - hoogteprofiel per rit (Canvas)
-   - auto-pauze, cijferkleur, HUD-ritinfo, nachtdimmer
+   RitMeter — herbouwde UI-laag
+   Eén bron van waarheid (state) → één render() → declaratieve CSS.
+   Geen enkele andere functie zet zichtbaarheid; handlers muteren
+   state en roepen render() aan.
    ═══════════════════════════════════════════════════════════ */
 
 const $ = id => document.getElementById(id);
 const LS = localStorage;
+
+/* ── ÉÉN bron van waarheid ────────────────────────────────── */
+const state = {
+  presentation: "map",                       // 'map' | 'big'
+  mirror: LS.getItem("rm_mirror") === "1",   // alleen betekenisvol in 'big'
+  nav: "off",                                // 'off' | 'search' | 'route' (alleen in map)
+  overlay: "none"                            // 'none' | 'settings' | 'history' | 'detail'
+};
+
+/* persistente voorkeuren (beïnvloeden inhoud, niet de structuur) */
+const COLORS = { amber:"#FFB300", white:"#E9EEF3", green:"#34E07A" };
+let useMph       = LS.getItem("rm_unit")    === "mph";
+let showCompass  = LS.getItem("rm_compass") !== "0";      // default AAN
+let showAltitude = LS.getItem("rm_altitude")=== "1";      // default UIT
+let autoPause    = LS.getItem("rm_apause")  === "1";
+let digitColor   = LS.getItem("rm_color")   || "amber";
+let dimVal       = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
+let vehicle      = LS.getItem("rm_vehicle") || "bike";    // ALLEEN routeprofiel
+let lang         = LS.getItem("rm_lang")    || "nl";
+
+let mapReady = false, firstFix = false, following = true, followTimer = null;
 
 /* ── vertalingen ─────────────────────────────────────────── */
 const I18N = {
@@ -685,19 +659,21 @@ const I18N = {
     unit_kmh:"km/u", unit_mph:"mph", time:"tijd", dist:"afstand", avg:"gem", max:"max",
     start:"Start rit", stop:"Stop", resume:"Hervat", reset:"Reset",
     save_reset:"Opslaan & reset", saved:"Rit opgeslagen", cleared:"Teller gereset",
-    alt:"hoogte", alt_nap:"hoogte NAP", alt_msl:"hoogte ≈ zeeniveau", hdg:"koers", nofix:"geen fix", paused:"pauze",
+    alt:"hoogte", alt_nap:"hoogte NAP", alt_msl:"hoogte ≈ zeeniveau", hdg:"koers",
+    nofix:"geen fix",
     set_title:"Instellingen", lang:"Taal", lang_d:"Taal van de app",
     unit:"Eenheid", unit_d:"Snelheid en afstand",
-    extra:"Hoogte & kompas", extra_d:"Toon hoogte en rijrichting",
+    vehicle:"Voertuig", vehicle_d:"Bepaalt alleen het routeprofiel voor navigatie",
+    compass:"Kompas", compass_d:"Toon de kompasroos in kaart-stand",
+    altitude:"Hoogte tonen", altitude_d:"Toon de live hoogte-uitlezing (registratie loopt altijd)",
     altcal:"Hoogte ijken", altcal_d:"GPS toont ellipsoïdehoogte; standaard ~43 m omgerekend naar NAP. IJk op een bekende hoogte (bijv. 0 m op het water).",
     alt_ijk:"IJk", alt_std:"Standaard", alt_prompt:"Huidige hoogte in meters:",
     alt_done:"Hoogte geijkt", alt_reset:"Teruggezet naar standaard", alt_nofix:"Nog geen hoogtefix",
-    color:"Kleur cijfers", color_d:"Voor de snelheidsmeter en HUD",
+    color:"Kleur cijfers", color_d:"Voor de snelheidsmeter",
+    mirror:"Spiegelen", mirror_d:"Spiegelt het grote snelheidsgetal (reflectie in de voorruit)",
     apause:"Auto-pauze", apause_d:"Tijd pauzeert na 5 s stilstand",
-    hudinfo:"Ritinfo in HUD", hudinfo_d:"Toon afstand en tijd in de HUD",
     dim:"Nachtdimmer", dim_d:"Dim de weergave in het donker",
-    hud:"HUD-modus", hud_d:"Gespiegeld beeld voor reflectie in de voorruit. Tik op het scherm om terug te keren.",
-    hud_go:"Start HUD", hud_hint:"tik om HUD te sluiten", close:"Sluiten",
+    exit_hint:"tik om terug te keren", close:"Sluiten",
     hist:"Geschiedenis",
     hist_empty:"Nog geen opgeslagen ritten. Een rit wordt bewaard zodra je na het stoppen op \u201COpslaan & reset\u201D tikt.",
     trips:"ritten", total:"totaal", week:"deze week", month:"deze maand",
@@ -705,8 +681,7 @@ const I18N = {
     restored:"ritten hersteld", bad_file:"Ongeldig back-upbestand",
     started:"gestart", accuracy:"gps-nauwk.",
     profile:"Hoogteprofiel", no_alt:"Geen bruikbare hoogtedata in deze rit.",
-    share_gpx:"Deel als GPX", del:"Verwijder",
-    confirm_del:"Deze rit definitief verwijderen?",
+    share_gpx:"Deel als GPX", del:"Verwijder", confirm_del:"Deze rit definitief verwijderen?",
     ntc_need:"Locatie nodig",
     ntc_need_t:"RitMeter heeft toegang tot je GPS nodig om snelheid en afstand te meten. Geef toestemming wanneer je telefoon erom vraagt.",
     ntc_deny:"Locatie geweigerd",
@@ -714,35 +689,32 @@ const I18N = {
     ntc_nogps:"Geen GPS", ntc_nogps_t:"Deze browser ondersteunt geen locatiebepaling.",
     retry:"Opnieuw proberen",
     cards:["N","NO","O","ZO","Z","ZW","W","NW"],
-    nav_search:"Zoek bestemming", p_car:"Auto", p_bike:"Fiets", p_moped:"Bromfiets",
-    p_snor:"Snorfiets", eta:"ETA", del:"Verwijder",
-    nav_start:"Start navigatie", nav_calc:"Route berekenen\u2026",
+    nav_search:"Zoek bestemming", p_car:"Auto", p_bike:"Fiets", p_moped:"Bromfiets", p_snor:"Snorfiets",
+    eta:"ETA", nav_start:"Start navigatie", nav_calc:"Route berekenen\u2026",
     nav_err:"Kon route niet bepalen", nav_none:"Geen resultaten",
     nav_no_favs:"Nog geen opgeslagen locaties", nav_wait_gps:"Wachten op GPS\u2026",
-    nav_rerouted:"Route herberekend", nav_arrived:"Aangekomen",
-    nav_fav_saved:"Locatie opgeslagen", nav_fav_full:"Maximaal 5 locaties",
-    eta_hr:"u", eta_min:"min",
-    nav_rerouting:"Herberekenen\u2026",
-    vehicle:"Voertuig",
-    vehicle_d:"Indeling: bij auto staat navigatie voorop, bij fiets/brom/snor het meten"
+    nav_arrived:"Aangekomen", nav_fav_saved:"Locatie opgeslagen", nav_fav_full:"Maximaal 5 locaties",
+    eta_hr:"u", eta_min:"min", remaining:"resterend"
   },
   en: {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
     start:"Start trip", stop:"Stop", resume:"Resume", reset:"Reset",
     save_reset:"Save & reset", saved:"Trip saved", cleared:"Counter reset",
-   alt:"altitude", alt_nap:"altitude NAP", alt_msl:"altitude ≈ MSL", hdg:"heading", nofix:"no fix", paused:"paused",
+    alt:"altitude", alt_nap:"altitude NAP", alt_msl:"altitude ≈ MSL", hdg:"heading",
+    nofix:"no fix",
     set_title:"Settings", lang:"Language", lang_d:"App language",
     unit:"Units", unit_d:"Speed and distance",
-    extra:"Altitude & compass", extra_d:"Show altitude and travel direction",
+    vehicle:"Vehicle", vehicle_d:"Only sets the routing profile for navigation",
+    compass:"Compass", compass_d:"Show the compass rose in map mode",
+    altitude:"Show altitude", altitude_d:"Show the live altitude readout (logging always runs)",
     altcal:"Calibrate altitude", altcal_d:"GPS shows ellipsoidal height; ~43 m is converted to NAP by default. Calibrate to a known height (e.g. 0 m on the water).",
     alt_ijk:"Set", alt_std:"Default", alt_prompt:"Current height in metres:",
     alt_done:"Altitude calibrated", alt_reset:"Reset to default", alt_nofix:"No altitude fix yet",
-    color:"Digit colour", color_d:"For the speedometer and HUD",
+    color:"Digit colour", color_d:"For the speedometer",
+    mirror:"Mirror", mirror_d:"Mirrors the large speed value (windshield reflection)",
     apause:"Auto-pause", apause_d:"Time pauses after 5 s standstill",
-    hudinfo:"Trip info in HUD", hudinfo_d:"Show distance and time in the HUD",
     dim:"Night dimmer", dim_d:"Dim the display in the dark",
-    hud:"HUD mode", hud_d:"Mirrored display for windshield reflection. Tap the screen to return.",
-    hud_go:"Start HUD", hud_hint:"tap to exit HUD", close:"Close",
+    exit_hint:"tap to return", close:"Close",
     hist:"History",
     hist_empty:"No saved trips yet. A trip is stored when you tap \u201CSave & reset\u201D after stopping.",
     trips:"trips", total:"total", week:"this week", month:"this month",
@@ -750,8 +722,7 @@ const I18N = {
     restored:"trips restored", bad_file:"Invalid backup file",
     started:"started", accuracy:"gps accuracy",
     profile:"Elevation profile", no_alt:"No usable elevation data in this trip.",
-    share_gpx:"Share as GPX", del:"Delete",
-    confirm_del:"Permanently delete this trip?",
+    share_gpx:"Share as GPX", del:"Delete", confirm_del:"Permanently delete this trip?",
     ntc_need:"Location needed",
     ntc_need_t:"RitMeter needs access to your GPS to measure speed and distance. Allow access when your phone asks.",
     ntc_deny:"Location denied",
@@ -759,58 +730,38 @@ const I18N = {
     ntc_nogps:"No GPS", ntc_nogps_t:"This browser does not support geolocation.",
     retry:"Try again",
     cards:["N","NE","E","SE","S","SW","W","NW"],
-    nav_search:"Search destination", p_car:"Car", p_bike:"Bike", p_moped:"Moped",
-    p_snor:"Light moped", eta:"ETA", del:"Delete",
-    nav_start:"Start navigation", nav_calc:"Calculating route\u2026",
+    nav_search:"Search destination", p_car:"Car", p_bike:"Bike", p_moped:"Moped", p_snor:"Light moped",
+    eta:"ETA", nav_start:"Start navigation", nav_calc:"Calculating route\u2026",
     nav_err:"Could not find a route", nav_none:"No results",
     nav_no_favs:"No saved places yet", nav_wait_gps:"Waiting for GPS\u2026",
-    nav_rerouted:"Route recalculated", nav_arrived:"Arrived",
-    nav_fav_saved:"Place saved", nav_fav_full:"Maximum of 5 places",
-    eta_hr:"hr", eta_min:"min",
-    nav_rerouting:"Rerouting\u2026",
-    vehicle:"Vehicle",
-    vehicle_d:"Layout: car puts navigation first, bike/moped focuses on measuring",
+    nav_arrived:"Arrived", nav_fav_saved:"Place saved", nav_fav_full:"Maximum of 5 places",
+    eta_hr:"hr", eta_min:"min", remaining:"left"
   }
 };
-let lang = LS.getItem("rm_lang") || "nl";
-const t = k => I18N[lang][k];
+const t   = k => I18N[lang][k];
 const loc = () => lang === "nl" ? "nl-NL" : "en-GB";
 
-/* ── instellingen & status ───────────────────────────────── */
-const COLORS = { amber:"#FFB300", white:"#E9EEF3", green:"#34E07A" };
-let useMph    = LS.getItem("rm_unit")  === "mph";
-let focus     = LS.getItem("rm_focus") === "1";
-let showExtra = LS.getItem("rm_extra") === "1";
-let autoPause = LS.getItem("rm_apause")=== "1";
-let hudInfoOn = LS.getItem("rm_hudinfo")==="1";
-let digitColor= LS.getItem("rm_color") || "amber";
-let dimVal    = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
-let hud = false, mapReady = false, firstFix = false;
-let vehicle = LS.getItem("rm_vehicle") || "bike";   // voertuig = routeprofiel + indeling
-
+/* ── trip-toestand (afgeleid: measuring) ─────────────────── */
 const trip = Object.assign(
   { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 },
   JSON.parse(LS.getItem("rm_trip") || "{}"),
   { running:false }
 );
 let route = trip.ms > 0 ? JSON.parse(LS.getItem("rm_route") || "[]") : [];
+function measuring(){
+  if (trip.running) return (autoPause && isPaused) ? "paused" : "running";
+  return trip.ms ? "paused" : "idle";
+}
 
-let lastPos = null;        // anker voor afstandsmeting
-let lastSample = null;     // laatste routepunt-sample
-let fixBuf = [];           // recente fixes voor venster-snelheid & stilstand
-let dispSpeed = 0;         // gefilterde snelheid (m/s)
+let lastPos = null, lastSample = null, fixBuf = [], dispSpeed = 0;
 let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, lastLon = null;
-/* GPS levert ellipsoïdehoogte (WGS84); in NL ligt NAP ~43 m lager.
-   altOffset wordt afgetrokken om ~NAP te tonen en is ijkbaar. */
 const GEOID_NL = 43;
 let altOffset = parseFloat(LS.getItem("rm_altoff"));
 if (!isFinite(altOffset)) altOffset = GEOID_NL;
-/* ruwe NL-bounding-box: binnen NL labelen we "NAP", daarbuiten "≈ zeeniveau" */
 const NL_BOX = { latMin:50.6, latMax:53.7, lonMin:3.2, lonMax:7.4 };
 const inNL = (lat, lon) => lat != null && lat >= NL_BOX.latMin && lat <= NL_BOX.latMax
                                        && lon >= NL_BOX.lonMin && lon <= NL_BOX.lonMax;
 let isPaused = false, zeroSince = null;
-let following = true, followTimer = null;   // kaart volgt de positie; pauzeert bij handmatig slepen
 
 /* ── helpers ─────────────────────────────────────────────── */
 const R = 6371000;
@@ -841,7 +792,7 @@ function toast(msg){
   toast._t = setTimeout(() => $("toast").classList.remove("show"), 2000);
 }
 
-/* ── IndexedDB (puur, zonder library) ────────────────────── */
+/* ── IndexedDB ───────────────────────────────────────────── */
 let dbP = null;
 function db(){
   if (!dbP) dbP = new Promise((res, rej) => {
@@ -852,21 +803,98 @@ function db(){
   });
   return dbP;
 }
-const tx = (d, mode) => d.transaction("trips", mode).objectStore("trips");
-const idbPut = trip => db().then(d => new Promise((res, rej) => {
-  const r = tx(d, "readwrite").put(trip); r.onsuccess = res; r.onerror = () => rej(r.error);
+const txs = (d, mode) => d.transaction("trips", mode).objectStore("trips");
+const idbPut = rec => db().then(d => new Promise((res, rej) => {
+  const r = txs(d, "readwrite").put(rec); r.onsuccess = res; r.onerror = () => rej(r.error);
 }));
 const idbAll = () => db().then(d => new Promise((res, rej) => {
-  const r = tx(d, "readonly").getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  const r = txs(d, "readonly").getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
 }));
 const idbGet = id => db().then(d => new Promise((res, rej) => {
-  const r = tx(d, "readonly").get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  const r = txs(d, "readonly").get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
 }));
 const idbDel = id => db().then(d => new Promise((res, rej) => {
-  const r = tx(d, "readwrite").delete(id); r.onsuccess = res; r.onerror = () => rej(r.error);
+  const r = txs(d, "readwrite").delete(id); r.onsuccess = res; r.onerror = () => rej(r.error);
 }));
 
-/* ── kaart (hoofdscherm) ─────────────────────────────────── */
+/* ═══ HET RENDER-CONTRACT ══════════════════════════════════
+   1) body-data-attributen uit state  2) inhoud  3) kaart-padding
+   Niets anders in de app raakt zichtbaarheid aan.            */
+function render(){
+  const b = document.body;
+  b.dataset.presentation = state.presentation;
+  b.dataset.mirror       = state.mirror ? "on" : "off";
+  b.dataset.nav          = state.nav;          /* CSS gate't dit achter data-presentation="map" */
+  b.dataset.measuring    = measuring();
+  b.dataset.overlay      = state.overlay;
+  b.dataset.compass      = showCompass  ? "on" : "off";
+  b.dataset.altitude     = showAltitude ? "on" : "off";
+  b.dataset.dragged      = following ? "no" : "yes";
+  document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
+  document.documentElement.style.setProperty("--dim-opacity", dimVal);
+
+  /* snelheid */
+  const sv = $("speedVal");
+  sv.textContent = firstFix ? fmtSpeed(dispSpeed) : "--";
+  sv.classList.toggle("moving", dispSpeed > .4);
+  $("unitBtn").textContent = unitLbl();
+
+  /* trip-cijfers */
+  $("stDist").textContent = fmtDist(trip.dist);
+  $("stTime").textContent = fmtTime(trip.ms);
+  const avg = trip.ms > 3000 ? trip.dist / (trip.ms/1000) : 0;
+  $("stAvg").textContent  = fmtSpeed(avg);
+  $("stMax").textContent  = fmtSpeed(trip.max);
+  $("stDistU").textContent = useMph ? "mi" : "km";
+  $("stTimeU").textContent = t("time") + (trip.running && isPaused && autoPause ? " ⏸" : "");
+  $("stAvgU").textContent  = t("avg") + " " + unitLbl();
+  $("stMaxU").textContent  = t("max") + " " + unitLbl();
+  $("startBtn").textContent = trip.running ? t("stop") : (trip.ms ? t("resume") : t("start"));
+  $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
+  $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
+  $("resetBtn").disabled    = trip.running || !trip.ms;
+
+  /* hoogte & koers (uitlezing) */
+  const napAlt = lastAltRaw == null ? null : lastAltRaw - altOffset;
+  $("lblAlt").textContent = lastLat == null ? t("alt")
+    : inNL(lastLat, lastLon) ? t("alt_nap") : t("alt_msl");
+  $("altVal").textContent = napAlt == null ? "—"
+    : useMph ? Math.round(napAlt * 3.28084) + " ft" : Math.round(napAlt) + " m";
+  $("hdgVal").textContent = lastBearing == null ? "—"
+    : Math.round(lastBearing) + "° " + cardinal(lastBearing);
+  if (lastBearing != null) $("roseG").style.transform = `rotate(${-lastBearing}deg)`;
+
+  /* nav-info-regel (resterende afstand + ETA) */
+  if (state.nav === "route" && nav.coords.length){
+    $("navInfoTxt").innerHTML =
+      `<b>${fmtNavDist(nav.remM)}</b> &middot; ${t("eta")} ${fmtEta(nav.remEtaS)}`;
+  }
+
+  /* groot-getal-hint */
+  $("exitHint").textContent = t("exit_hint");
+
+  applyMapPadding();
+}
+
+/* kaart-padding uit de werkelijke hoogte van het zichtbare onderpaneel */
+function applyMapPadding(){
+  if (!map || !mapReady) return;
+  const land = matchMedia("(orientation: landscape)").matches;
+  const tripH = state.presentation === "map" ? ($("r-trip").offsetHeight || 0) : 0;
+  const panelOpen = state.presentation === "map" && state.nav === "search";
+  let pad;
+  if (land){
+    const left = panelOpen ? Math.min(380, Math.round(innerWidth*0.44)) + 20 : 130;
+    pad = { top:64, bottom: tripH ? tripH + 22 : 60, left, right:60 };
+  } else {
+    const top = Math.round((state.presentation === "map" ? 0.42 : 0.45) * innerHeight);
+    const bottom = panelOpen ? Math.round(innerHeight*0.40) : (tripH ? tripH + 22 : 120);
+    pad = { top, bottom, left:24, right:24 };
+  }
+  map.setPadding(pad);
+}
+
+/* ── kaart ───────────────────────────────────────────────── */
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 let map, marker;
 function initMap(lon, lat){
@@ -876,52 +904,47 @@ function initMap(lon, lat){
     attributionControl:{compact:true}, fadeDuration:0
   });
   map.touchZoomRotate.disableRotation();
-  map.setPadding({ top: Math.round(window.innerHeight * .45) });
+  map.setPadding({ top: Math.round(innerHeight * .42) });
   const el = document.createElement("div");
   el.className = "me";
   el.innerHTML = `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
   marker = new maplibregl.Marker({element:el, rotationAlignment:"map"})
             .setLngLat([lon,lat]).addTo(map);
-  map.on("load", () => { mapReady = true; navPadding(); });
-  map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });   // handmatig slepen/zoomen
+  map.on("load", () => { mapReady = true; applyMapPadding(); if (nav.coords.length) drawNavRoute(); });
+  map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });
 }
-
 function updateCamera(lon, lat, bearing){
   if (!marker) return;
   marker.setLngLat([lon,lat]);
   marker.setRotation(bearing ?? 0);
-  if (!focus && !hud && mapReady && following)
+  if (state.presentation === "map" && mapReady && following)
     map.easeTo({ center:[lon,lat], bearing:bearing ?? map.getBearing(), duration:600, easing:x=>x });
 }
 function suspendFollow(){
   following = false;
-  $("recenterBtn").classList.add("show");
   clearTimeout(followTimer);
-  followTimer = setTimeout(resumeFollow, 10000);   // na 10 s rust weer volgen
+  followTimer = setTimeout(resumeFollow, 10000);
+  render();
 }
 function resumeFollow(){
   clearTimeout(followTimer);
   following = true;
-  $("recenterBtn").classList.remove("show");
-  if (marker && mapReady && !focus && !hud)
+  if (marker && mapReady && state.presentation === "map")
     map.easeTo({ center: marker.getLngLat(), bearing: lastBearing ?? map.getBearing(), duration:500 });
+  render();
 }
 
-/* ── GPS & snelheidsfilter ───────────────────────────────── */
+/* ── GPS & snelheidsfilter (hergebruikt) ─────────────────── */
 function startGPS(){
   if (!("geolocation" in navigator)){ showNotice(t("ntc_nogps"), t("ntc_nogps_t")); return; }
   navigator.geolocation.watchPosition(onFix, onErr,
     { enableHighAccuracy:true, maximumAge:1000, timeout:15000 });
 }
-
-/* Adaptieve smoothing: hoe slechter de fix en hoe lager de snelheid,
-   hoe zwaarder we dempen. */
 function alphaFor(acc, v){
   let a = acc <= 5 ? .60 : acc <= 10 ? .45 : acc <= 20 ? .30 : .20;
-  if (v < 3) a *= .8;           // extra demping bij fietssnelheden
+  if (v < 3) a *= .8;
   return a;
 }
-
 function onFix(pos){
   hideNotice();
   const c = pos.coords, ts = pos.timestamp;
@@ -933,8 +956,6 @@ function onFix(pos){
   $("gpsDot").className = acc <= 8 ? "ok" : acc <= 25 ? "mid" : "";
   $("gpsTxt").textContent = `±${Math.round(acc)} m`;
 
-  /* hoogte (gesmoothed) */
- /* hoogte: sterk smoothen, slechte verticale fixes negeren/laag wegen */
   if (c.altitude != null && !isNaN(c.altitude)){
     const va = (c.altitudeAccuracy != null && !isNaN(c.altitudeAccuracy)) ? c.altitudeAccuracy : 30;
     if (va <= 30){
@@ -943,11 +964,9 @@ function onFix(pos){
     }
   }
 
-  /* fix-buffer (±12 s) voor venster-snelheid en stilstanddetectie */
   fixBuf.push({ t:ts, lat:c.latitude, lon:c.longitude, acc });
   while (fixBuf.length && ts - fixBuf[0].t > 12000) fixBuf.shift();
 
-  /* meting: chip-snelheid primair, anders verplaatsing over ~3 s venster */
   let m = (c.speed != null && !isNaN(c.speed) && c.speed >= 0) ? c.speed : null;
   if (m === null && fixBuf.length > 1){
     let ref = fixBuf[0];
@@ -956,27 +975,22 @@ function onFix(pos){
     if (dt > 0.8) m = hv(ref, {lat:c.latitude, lon:c.longitude}) / dt;
   }
 
-  /* stilstand: nauwelijks verplaatsing over de laatste ~5 s */
   let still = false;
   const old5 = fixBuf.find(f => ts - f.t >= 4500);
   if (old5){
     const moved = hv(old5, {lat:c.latitude, lon:c.longitude});
     if (moved < Math.max(4, Math.min(acc, 25) * .8)) still = true;
   }
-
   if (still){
-    dispSpeed *= .3;
-    if (dispSpeed < .45) dispSpeed = 0;
+    dispSpeed *= .3; if (dispSpeed < .45) dispSpeed = 0;
   } else if (m !== null){
     if (m < .6) m = 0;
     dispSpeed += alphaFor(acc, m) * (m - dispSpeed);
     if (dispSpeed < .45 && m < .7) dispSpeed = 0;
   }
-
-  /* koers: alleen bij echte beweging */
   if (c.heading != null && !isNaN(c.heading) && dispSpeed > 1.1) lastBearing = c.heading;
 
-  /* tripafstand + routepunten */
+  /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
   if (trip.running && acc <= 35){
     trip.accSum += acc; trip.accN++;
     const here = { lat:c.latitude, lon:c.longitude };
@@ -988,15 +1002,14 @@ function onFix(pos){
         if (dispSpeed > trip.max) trip.max = dispSpeed;
         lastPos = { ...here, t:ts };
       } else if (d > 200){
-        lastPos = { ...here, t:ts };          // grote sprong: opnieuw verankeren
+        lastPos = { ...here, t:ts };
       }
     } else lastPos = { ...here, t:ts };
 
-    /* sample elke 3 s of elke 25 m */
     if (!lastSample || ts - lastSample.t >= 3000 || hv(lastSample, here) >= 25){
       route.push({ t:ts, lat:+c.latitude.toFixed(6), lon:+c.longitude.toFixed(6),
                    v:+dispSpeed.toFixed(2),
-                  alt: lastAltRaw == null ? null : +(lastAltRaw - altOffset).toFixed(1),
+                   alt: lastAltRaw == null ? null : +(lastAltRaw - altOffset).toFixed(1),
                    acc: Math.round(acc) });
       lastSample = { ...here, t:ts };
     }
@@ -1005,10 +1018,9 @@ function onFix(pos){
   }
 
   updateCamera(c.longitude, c.latitude, lastBearing);
+  navOnFix(c);
   render();
-  navOnFix(c);   // navigatie-overlay (gebruikt c = pos.coords)
 }
-
 function onErr(e){
   if (e.code === 1) showNotice(t("ntc_deny"), t("ntc_deny_t"));
   else $("gpsTxt").textContent = t("nofix");
@@ -1016,79 +1028,31 @@ function onErr(e){
 
 /* ── klok, auto-pauze & persistentie ─────────────────────── */
 setInterval(() => {
-  /* GPS al >4 s stil? Snelheid gecontroleerd laten zakken. */
   if (firstFix && Date.now() - lastFixTime > 4000){
     dispSpeed *= .5; if (dispSpeed < .4) dispSpeed = 0;
   }
-  /* auto-pauze: >5 s vrijwel stilstand */
   if (dispSpeed < .55){
     if (zeroSince === null) zeroSince = Date.now();
     isPaused = autoPause && (Date.now() - zeroSince > 5000);
   } else { zeroSince = null; isPaused = false; }
-
   if (trip.running && !(autoPause && isPaused)){ trip.ms += 1000; }
   if (trip.running || dispSpeed > 0) render();
 }, 1000);
-
 setInterval(() => {
   LS.setItem("rm_trip", JSON.stringify(trip));
   if (trip.running) LS.setItem("rm_route", JSON.stringify(route));
 }, 15000);
 
-/* ── weergave ────────────────────────────────────────────── */
-function render(){
-  const sv = $("speedVal");
-  sv.textContent = firstFix ? fmtSpeed(dispSpeed) : "--";
-  sv.classList.toggle("moving", dispSpeed > .4);
-
-  $("stDist").textContent = fmtDist(trip.dist);
-  $("stTime").textContent = fmtTime(trip.ms);
-  const avg = trip.ms > 3000 ? trip.dist / (trip.ms/1000) : 0;
-  $("stAvg").textContent = fmtSpeed(avg);
-  $("stMax").textContent = fmtSpeed(trip.max);
-
-  $("unitBtn").textContent = unitLbl();
-  $("stDistU").textContent = useMph ? "mi" : "km";
-  $("stTimeU").textContent = t("time") + (trip.running && isPaused && autoPause ? " ⏸" : "");
-  $("stAvgU").textContent  = t("avg") + " " + unitLbl();
-  $("stMaxU").textContent  = t("max") + " " + unitLbl();
-
-  $("startBtn").textContent = trip.running ? t("stop") : (trip.ms ? t("resume") : t("start"));
-  $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
-  $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
-  $("resetBtn").disabled    = trip.running || !trip.ms;
-
-if (showExtra){
-    const napAlt = lastAltRaw == null ? null : lastAltRaw - altOffset;
-    $("lblAlt").textContent = lastLat == null ? t("alt")
-      : inNL(lastLat, lastLon) ? t("alt_nap") : t("alt_msl");
-    $("altVal").textContent = napAlt == null ? "—"
-      : useMph ? Math.round(napAlt * 3.28084) + " ft" : Math.round(napAlt) + " m";
-    $("hdgVal").textContent = lastBearing == null ? "—"
-      : Math.round(lastBearing) + "° " + cardinal(lastBearing);
-  }
-  if (showExtra && lastBearing != null)
-    $("roseG").style.transform = `rotate(${-lastBearing}deg)`;
-
-  if (hud && hudInfoOn)
-    $("hudData").textContent =
-      `${fmtDist(trip.dist)} ${useMph ? "mi" : "km"} · ${fmtTime(trip.ms)}`;
-
-  /* slanke trip-regel tijdens navigatie (meten + navigeren samen) */
-  if (document.body.classList.contains("navigating") && vehicle !== "car"){
-    const tAvg = trip.ms > 3000 ? trip.dist / (trip.ms/1000) : 0;
-    $("navTripTxt").textContent =
-      `${fmtDist(trip.dist)} ${useMph?"mi":"km"} · ${fmtTime(trip.ms)} · ${t("avg")} ${fmtSpeed(tAvg)}`;
-    const tb = $("navTripBtn");
-    tb.className = trip.running ? "halt" : "";
-    tb.innerHTML = trip.running
-      ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
-      : '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l11 7-11 7z"/></svg>';
-  }
+/* ── meten: start/stop/reset ─────────────────────────────── */
+function toggleTrip(){
+  trip.running = !trip.running;
+  if (trip.running){
+    if (!trip.start) trip.start = Date.now();
+    lastPos = null; lastSample = null;
+  } else LS.setItem("rm_route", JSON.stringify(route));
+  LS.setItem("rm_trip", JSON.stringify(trip));
+  render();
 }
-  
-
-/* ── rit opslaan / wissen ────────────────────────────────── */
 function tripName(start){
   const d = new Date(start || Date.now());
   return d.toLocaleDateString(loc(), { day:"numeric", month:"short" }) + " " +
@@ -1097,15 +1061,12 @@ function tripName(start){
 async function saveAndReset(){
   if (trip.dist >= 100){
     const rec = {
-      id: trip.start || Date.now(),
-      name: tripName(trip.start),
+      id: trip.start || Date.now(), name: tripName(trip.start),
       start: trip.start || Date.now(), end: Date.now(),
       ms: trip.ms, dist: trip.dist, max: trip.max,
-      accAvg: trip.accN ? trip.accSum / trip.accN : null,
-      points: route
+      accAvg: trip.accN ? trip.accSum / trip.accN : null, points: route
     };
-    try { await idbPut(rec); toast(t("saved")); }
-    catch(e){ console.error(e); }
+    try { await idbPut(rec); toast(t("saved")); } catch(e){ console.error(e); }
   } else toast(t("cleared"));
   Object.assign(trip, { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 });
   route = []; lastSample = null;
@@ -1114,30 +1075,26 @@ async function saveAndReset(){
   render();
 }
 
-/* ── geschiedenis-UI ─────────────────────────────────────── */
+/* ── geschiedenis (modale overlay) ───────────────────────── */
 async function openHist(){
-  $("hist").classList.add("show");
+  state.overlay = "history"; render();
   const trips = (await idbAll().catch(() => [])).sort((a,b) => b.id - a.id);
   const list = $("histList");
   list.innerHTML = "";
   $("histEmpty").style.display = trips.length ? "none" : "block";
   $("histEmpty").textContent = t("hist_empty");
-
   const now = new Date();
   const wk = new Date(now); wk.setHours(0,0,0,0);
-  wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));          // afgelopen maandag
-  const mo = new Date(now.getFullYear(), now.getMonth(), 1);   // eerste van de maand
-  const sum = list => ({ n:list.length,
-    d:list.reduce((s,r) => s + r.dist, 0), t:list.reduce((s,r) => s + r.ms, 0) });
+  wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
+  const mo = new Date(now.getFullYear(), now.getMonth(), 1);
+  const sum = l => ({ n:l.length, d:l.reduce((s,r)=>s+r.dist,0), t:l.reduce((s,r)=>s+r.ms,0) });
   const cell = (lbl, s) =>
     `<div class="tot"><span>${lbl}</span><b>${fmtDist(s.d)} ${useMph?"mi":"km"}</b>` +
     `<i>${s.n} ${t("trips")} · ${fmtTime(s.t)}</i></div>`;
   $("histTotals").innerHTML = trips.length
     ? cell(t("week"),  sum(trips.filter(r => r.start >= wk)))
     + cell(t("month"), sum(trips.filter(r => r.start >= mo)))
-    + cell(t("total"), sum(trips))
-    : "";
-
+    + cell(t("total"), sum(trips)) : "";
   for (const r of trips){
     const btn = document.createElement("button");
     btn.className = "hrow";
@@ -1149,14 +1106,14 @@ async function openHist(){
     list.appendChild(btn);
   }
 }
+function closeHist(){ state.overlay = "none"; render(); }
 
 let dmapInst = null, detId = null;
 async function openDetail(id){
   const r = await idbGet(id); if (!r) return;
   detId = id;
-  $("detail").classList.add("show");
+  state.overlay = "detail"; render();
   $("detTitle").textContent = r.name;
-
   const avg = r.ms > 0 ? r.dist / (r.ms/1000) : 0;
   const stat = (v,l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
   $("detStats").innerHTML =
@@ -1166,8 +1123,6 @@ async function openDetail(id){
     stat(fmtSpeed(r.max) + " " + unitLbl(), t("max")) +
     stat(new Date(r.start).toLocaleString(loc(), {dateStyle:"short", timeStyle:"short"}), t("started")) +
     stat(r.accAvg ? "±" + Math.round(r.accAvg) + " m" : "—", t("accuracy"));
-
-  /* kaart met route-polyline */
   if (dmapInst){ dmapInst.remove(); dmapInst = null; }
   const pts = (r.points || []).filter(p => p.lat && p.lon);
   if (pts.length >= 2){
@@ -1188,44 +1143,37 @@ async function openDetail(id){
     }, 60);
     $("dmap").style.display = "block";
   } else $("dmap").style.display = "none";
-
   drawProfile(pts);
 }
 function closeDetail(){
-  $("detail").classList.remove("show");
   if (dmapInst){ dmapInst.remove(); dmapInst = null; }
+  state.overlay = "history"; render();
 }
 
 /* ── hoogteprofiel (Canvas) ──────────────────────────────── */
 function drawProfile(pts){
   const cv = $("profile"), note = $("profNote");
-  const data = [];
-  let cum = 0;
+  const data = []; let cum = 0;
   for (let i = 0; i < pts.length; i++){
     if (i) cum += hv(pts[i-1], pts[i]);
     if (pts[i].alt != null) data.push({ x:cum, y:pts[i].alt });
   }
   if (data.length < 2){
-    cv.style.display = "none"; note.style.display = "block"; note.textContent = t("no_alt");
-    return;
+    cv.style.display = "none"; note.style.display = "block"; note.textContent = t("no_alt"); return;
   }
   cv.style.display = "block"; note.style.display = "none";
-
   const dpr = window.devicePixelRatio || 1;
   const W = cv.clientWidth || 300, H = 140;
   cv.width = W * dpr; cv.height = H * dpr;
   const g = cv.getContext("2d"); g.scale(dpr, dpr);
-
   const padL = 34, padR = 8, padT = 10, padB = 20;
   const minY0 = Math.min(...data.map(p => p.y)), maxY0 = Math.max(...data.map(p => p.y));
   const span = Math.max(10, maxY0 - minY0);
-  const minY = minY0 - (span - (maxY0 - minY0)) / 2, maxY = minY + span;
+  const minY = minY0 - (span - (maxY0 - minY0)) / 2;
   const maxX = data[data.length - 1].x || 1;
   const X = x => padL + (x / maxX) * (W - padL - padR);
   const Y = y => padT + (1 - (y - minY) / span) * (H - padT - padB);
-
   g.clearRect(0, 0, W, H);
-  /* vlakvulling + lijn */
   g.beginPath(); g.moveTo(X(data[0].x), Y(data[0].y));
   for (const p of data) g.lineTo(X(p.x), Y(p.y));
   g.lineTo(X(maxX), H - padB); g.lineTo(X(0), H - padB); g.closePath();
@@ -1233,8 +1181,6 @@ function drawProfile(pts){
   g.beginPath(); g.moveTo(X(data[0].x), Y(data[0].y));
   for (const p of data) g.lineTo(X(p.x), Y(p.y));
   g.strokeStyle = "#FFB300"; g.lineWidth = 2; g.lineJoin = "round"; g.stroke();
-
-  /* as-labels */
   g.fillStyle = "#7E8B98"; g.font = "10px system-ui";
   const aF = m => useMph ? Math.round(m * 3.28084) + " ft" : Math.round(m) + " m";
   g.fillText(aF(maxY0), 2, Y(maxY0) + 3);
@@ -1244,7 +1190,7 @@ function drawProfile(pts){
   g.fillText(dTxt, W - padR - g.measureText(dTxt).width, H - 6);
 }
 
-/* ── GPX-export & delen ──────────────────────────────────── */
+/* ── GPX-export & back-up ────────────────────────────────── */
 const gpxDoc = inner => `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="RitMeter" xmlns="http://www.topografix.com/GPX/1/1">
 ${inner}
@@ -1254,12 +1200,7 @@ function trkXML(r){
     `      <trkpt lat="${p.lat}" lon="${p.lon}">` +
     (p.alt != null ? `<ele>${p.alt}</ele>` : "") +
     `<time>${new Date(p.t).toISOString()}</time></trkpt>`).join("\n");
-  return `  <trk>
-    <name>${r.name}</name>
-    <trkseg>
-${pts}
-    </trkseg>
-  </trk>`;
+  return `  <trk>\n    <name>${r.name}</name>\n    <trkseg>\n${pts}\n    </trkseg>\n  </trk>`;
 }
 const toGPX = r => gpxDoc(trkXML(r));
 async function shareOrDownload(file, title){
@@ -1279,8 +1220,8 @@ async function shareGPX(){
 async function gpxAll(){
   const trips = (await idbAll().catch(() => [])).sort((a,b) => a.id - b.id);
   if (!trips.length) return;
-  const xml = gpxDoc(trips.map(trkXML).join("\n"));
-  shareOrDownload(new File([xml], "ritmeter_alle_ritten.gpx", { type:"application/gpx+xml" }), "RitMeter");
+  shareOrDownload(new File([gpxDoc(trips.map(trkXML).join("\n"))],
+    "ritmeter_alle_ritten.gpx", { type:"application/gpx+xml" }), "RitMeter");
 }
 async function backup(){
   const trips = await idbAll().catch(() => []);
@@ -1295,48 +1236,41 @@ async function restore(file){
     let n = 0;
     for (const r of data.trips)
       if (r && r.id && typeof r.dist === "number"){ await idbPut(r); n++; }
-    toast(n + " " + t("restored"));
-    openHist();
+    toast(n + " " + t("restored")); openHist();
   } catch(e){ toast(t("bad_file")); }
 }
 
 /* ── statische teksten & instellingen-UI ─────────────────── */
 function applyLang(){
   document.documentElement.lang = lang;
-  $("lblAlt").textContent = t("alt");   $("lblHdg").textContent = t("hdg");
+  $("lblAlt").textContent = t("alt"); $("lblHdg").textContent = t("hdg");
   $("setTitle").textContent = t("set_title");
-  $("lblLang").textContent = t("lang");     $("dscLang").textContent = t("lang_d");
-  $("lblUnit").textContent = t("unit");     $("dscUnit").textContent = t("unit_d");
-  $("lblExtra").textContent = t("extra");   $("dscExtra").textContent = t("extra_d");
-  $("lblAltCal").textContent = t("altcal"); $("dscAltCal").textContent = t("altcal_d");
-  $("altCalBtn").textContent = t("alt_ijk"); $("altCalReset").textContent = t("alt_std");
-  $("lblColor").textContent = t("color");   $("dscColor").textContent = t("color_d");
-  $("lblAP").textContent = t("apause");     $("dscAP").textContent = t("apause_d");
-  $("lblHudInfo").textContent = t("hudinfo");$("dscHudInfo").textContent = t("hudinfo_d");
-  $("lblDim").textContent = t("dim");       $("dscDim").textContent = t("dim_d");
-  $("lblHud").textContent = t("hud");       $("dscHud").textContent = t("hud_d");
-  $("hudGo").textContent = t("hud_go");     $("hudHint").textContent = t("hud_hint");
-  $("setClose").textContent = t("close");   $("ntcBtn").textContent = t("retry");
+  $("lblLang").textContent = t("lang");         $("dscLang").textContent = t("lang_d");
+  $("lblUnit").textContent = t("unit");         $("dscUnit").textContent = t("unit_d");
+  $("lblVeh").textContent = t("vehicle");       $("dscVeh").textContent = t("vehicle_d");
+  $("lblCompass").textContent = t("compass");   $("dscCompass").textContent = t("compass_d");
+  $("lblAltitude").textContent = t("altitude"); $("dscAltitude").textContent = t("altitude_d");
+  $("lblAltCal").textContent = t("altcal");     $("dscAltCal").textContent = t("altcal_d");
+  $("altCalBtn").textContent = t("alt_ijk");    $("altCalReset").textContent = t("alt_std");
+  $("lblColor").textContent = t("color");       $("dscColor").textContent = t("color_d");
+  $("lblMirror").textContent = t("mirror");     $("dscMirror").textContent = t("mirror_d");
+  $("lblAP").textContent = t("apause");         $("dscAP").textContent = t("apause_d");
+  $("lblDim").textContent = t("dim");           $("dscDim").textContent = t("dim_d");
+  $("setClose").textContent = t("close");       $("ntcBtn").textContent = t("retry");
   $("unitKm").textContent = I18N[lang].unit_kmh;
   $("histTitle").textContent = t("hist");
   $("lblProfile").textContent = t("profile");
-  $("shareBtn").textContent = t("share_gpx");
-  $("delBtn").textContent = t("del");
-  $("bakBtn").textContent = t("backup");
-  $("resBtn").textContent = t("restore");
+  $("shareBtn").textContent = t("share_gpx");   $("delBtn").textContent = t("del");
+  $("bakBtn").textContent = t("backup");        $("resBtn").textContent = t("restore");
   $("gpxAllBtn").textContent = t("gpx_all");
   const cd = t("cards");
   $("rN").textContent = cd[0]; $("rE").textContent = cd[2];
   $("rS").textContent = cd[4]; $("rW").textContent = cd[6];
   $("navSearch").placeholder = t("nav_search");
   $("navStart").textContent  = t("nav_start");
- { const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
-    document.querySelectorAll("#navProfiles button")
-      .forEach(b => b.textContent = pl[b.dataset.p]); }
-  $("lblVeh").textContent = t("vehicle"); $("dscVeh").textContent = t("vehicle_d");
   { const pv={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
     document.querySelectorAll("#vehSeg button").forEach(b => b.textContent = pv[b.dataset.p]); }
- if (typeof renderFavs === "function") renderFavs();
+  if (typeof renderFavs === "function") renderFavs();
   syncSettingsUI(); render();
 }
 function syncSettingsUI(){
@@ -1344,117 +1278,65 @@ function syncSettingsUI(){
   $("langEN").classList.toggle("on", lang === "en");
   $("unitKm").classList.toggle("on", !useMph);
   $("unitMi").classList.toggle("on",  useMph);
-  $("extraSw").classList.toggle("on", showExtra);
+  $("compassSw").classList.toggle("on", showCompass);
+  $("altSw").classList.toggle("on", showAltitude);
+  $("mirrorSw").classList.toggle("on", state.mirror);
   $("apSw").classList.toggle("on", autoPause);
-  $("hudInfoSw").classList.toggle("on", hudInfoOn);
   $("colAmber").classList.toggle("on", digitColor === "amber");
   $("colWhite").classList.toggle("on", digitColor === "white");
   $("colGreen").classList.toggle("on", digitColor === "green");
   $("dimRange").value = Math.round(dimVal * 100);
-  $("extra").classList.toggle("show", showExtra && !hud);
-  $("rose").classList.toggle("show", showExtra && !hud);
-  document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
-  $("dim").style.opacity = dimVal;
-  document.body.classList.toggle("hudinfo", hudInfoOn);
+  document.querySelectorAll("#vehSeg button").forEach(b => b.classList.toggle("on", b.dataset.p === vehicle));
 }
 
-/* ── bediening ───────────────────────────────────────────── */
-function toggleTrip(){
-  trip.running = !trip.running;
-  if (trip.running){
-    if (!trip.start) trip.start = Date.now();
-    lastPos = null; lastSample = null;
-  } else LS.setItem("rm_route", JSON.stringify(route));
-  LS.setItem("rm_trip", JSON.stringify(trip));
-  render();
-}
-$("startBtn").onclick   = toggleTrip;
-$("navTripBtn").onclick = toggleTrip;
+/* ── bediening (alle handlers: muteer state/voorkeur → render) ── */
+$("modeBtn").onclick = () => { state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60); };
+$("r-exit").onclick  = () => { state.presentation = "map"; render(); if (map) setTimeout(() => map.resize(), 60); };
+$("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
+$("unitBtn").onclick  = () => setUnit(!useMph);
+function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); syncSettingsUI(); render(); }
 
-$("unitBtn").onclick = () => setUnit(!useMph);
-function setUnit(mph){
-  useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh");
-  syncSettingsUI(); render();
-}
-$("unitKm").onclick = () => setUnit(false);
-$("unitMi").onclick = () => setUnit(true);
-
-$("modeBtn").onclick = () => { focus = !focus; LS.setItem("rm_focus", focus?"1":"0"); applyMode(); };
-function applyMode(){
-  document.body.classList.toggle("focusmode", focus && !hud);
- $("modeIcon").innerHTML = focus
-    ? `<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>`
-    : `<path d="M5 17a8 8 0 1 1 14 0"/><path d="M12 13l4-3"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/>`;
-  if (!focus && !hud && map) setTimeout(() => map.resize(), 60);
-}
-
-/* instellingen */
-$("setBtn").onclick   = () => $("settings").classList.add("show");
-$("setClose").onclick = () => $("settings").classList.remove("show");
-$("settings").onclick = e => { if (e.target === $("settings")) $("settings").classList.remove("show"); };
+$("setBtn").onclick   = () => { state.overlay = "settings"; render(); };
+$("setClose").onclick = () => { state.overlay = "none"; render(); };
+$("settings").onclick = e => { if (e.target === $("settings")){ state.overlay = "none"; render(); } };
 $("langNL").onclick = () => { lang = "nl"; LS.setItem("rm_lang", lang); applyLang(); };
 $("langEN").onclick = () => { lang = "en"; LS.setItem("rm_lang", lang); applyLang(); };
-$("extraSw").onclick = () => { showExtra = !showExtra; LS.setItem("rm_extra", showExtra?"1":"0"); syncSettingsUI(); render(); };
+$("compassSw").onclick = () => { showCompass = !showCompass; LS.setItem("rm_compass", showCompass?"1":"0"); syncSettingsUI(); render(); };
+$("altSw").onclick = () => { showAltitude = !showAltitude; LS.setItem("rm_altitude", showAltitude?"1":"0"); syncSettingsUI(); render(); };
+$("mirrorSw").onclick = () => { state.mirror = !state.mirror; LS.setItem("rm_mirror", state.mirror?"1":"0"); syncSettingsUI(); render(); };
+$("apSw").onclick = () => { autoPause = !autoPause; LS.setItem("rm_apause", autoPause?"1":"0"); syncSettingsUI(); render(); };
+$("colAmber").onclick = () => setColor("amber");
+$("colWhite").onclick = () => setColor("white");
+$("colGreen").onclick = () => setColor("green");
+function setColor(c){ digitColor = c; LS.setItem("rm_color", c); syncSettingsUI(); render(); }
+$("dimRange").oninput = e => { dimVal = (+e.target.value)/100; LS.setItem("rm_dim", String(dimVal)); render(); };
 $("altCalBtn").onclick = () => {
   if (lastAltRaw == null){ toast(t("alt_nofix")); return; }
   const inp = prompt(t("alt_prompt"), String(Math.round(lastAltRaw - altOffset)));
   if (inp == null) return;
   const known = parseFloat(String(inp).replace(",", "."));
   if (!isFinite(known)) return;
-  altOffset = lastAltRaw - known;
-  LS.setItem("rm_altoff", String(altOffset));
+  altOffset = lastAltRaw - known; LS.setItem("rm_altoff", String(altOffset));
   toast(t("alt_done")); render();
 };
-$("altCalReset").onclick = () => {
-  altOffset = GEOID_NL; LS.removeItem("rm_altoff");
-  toast(t("alt_reset")); render();
-};
-$("apSw").onclick = () => { autoPause = !autoPause; LS.setItem("rm_apause", autoPause?"1":"0"); syncSettingsUI(); };
-$("hudInfoSw").onclick = () => { hudInfoOn = !hudInfoOn; LS.setItem("rm_hudinfo", hudInfoOn?"1":"0"); syncSettingsUI(); render(); };
-$("colAmber").onclick = () => setColor("amber");
-$("colWhite").onclick = () => setColor("white");
-$("colGreen").onclick = () => setColor("green");
-function setColor(c){ digitColor = c; LS.setItem("rm_color", c); syncSettingsUI(); }
-$("dimRange").oninput = e => {
-  dimVal = (+e.target.value) / 100; LS.setItem("rm_dim", String(dimVal));
-  $("dim").style.opacity = dimVal;
-};
+$("altCalReset").onclick = () => { altOffset = GEOID_NL; LS.removeItem("rm_altoff"); toast(t("alt_reset")); render(); };
 
-/* geschiedenis */
 $("histBtn").onclick = openHist;
-$("recenterBtn").onclick = resumeFollow;
-$("histClose").onclick = () => $("hist").classList.remove("show");
+$("histClose").onclick = closeHist;
 $("bakBtn").onclick = backup;
 $("gpxAllBtn").onclick = gpxAll;
 $("resBtn").onclick = () => $("resFile").click();
-$("resFile").onchange = e => {
-  if (e.target.files[0]) restore(e.target.files[0]);
-  e.target.value = "";
-};
+$("resFile").onchange = e => { if (e.target.files[0]) restore(e.target.files[0]); e.target.value = ""; };
 $("detBack").onclick = closeDetail;
 $("shareBtn").onclick = shareGPX;
 $("delBtn").onclick = async () => {
   if (!confirm(t("confirm_del"))) return;
   await idbDel(detId); closeDetail(); openHist();
 };
+$("r-recenter").onclick = resumeFollow;
 
-/* HUD */
-$("hudGo").onclick = () => {
-  $("settings").classList.remove("show");
-  hud = true;
-  document.body.classList.add("hud");
-  document.body.classList.remove("focusmode");
-  syncSettingsUI(); render();
-};
-$("hudExit").onclick = () => {
-  hud = false;
-  document.body.classList.remove("hud");
-  applyMode(); syncSettingsUI();
-  if (!focus && map) setTimeout(() => map.resize(), 60);
-};
-
-/* ── scherm aanhouden (zelfherstellend) ──────────────────── */
+/* ── scherm aanhouden ────────────────────────────────────── */
 let wakeLock = null;
 async function keepAwake(){
   if (!("wakeLock" in navigator)) return;
@@ -1462,22 +1344,19 @@ async function keepAwake(){
   try{
     if (wakeLock && !wakeLock.released) return;
     wakeLock = await navigator.wakeLock.request("screen");
-    /* iOS geeft de lock soms spontaan vrij: meteen klaarzetten voor heraanvraag */
     wakeLock.addEventListener("release", () => { wakeLock = null; });
-  } catch(e){ wakeLock = null; /* o.a. geweigerd in energiebesparingsmodus */ }
+  } catch(e){ wakeLock = null; }
 }
-setInterval(keepAwake, 20000);                       // vangnet
-document.addEventListener("pointerdown", keepAwake); // elke aanraking
+setInterval(keepAwake, 20000);
+document.addEventListener("pointerdown", keepAwake);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") keepAwake();
 });
 
-/* ── rotatie vergrendelen op portret (werkt in geïnstalleerde PWA) ── */
+/* ── rotatie vergrendelen op portret ─────────────────────── */
 async function lockPortrait(){
-  try{
-    if (screen.orientation && screen.orientation.lock)
-      await screen.orientation.lock("portrait");
-  } catch(e){ /* in een gewone browsertab niet toegestaan: geen probleem */ }
+  try{ if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("portrait"); }
+  catch(e){}
 }
 if (screen.orientation) screen.orientation.addEventListener("change", lockPortrait);
 document.addEventListener("pointerdown", lockPortrait, { once:true });
@@ -1490,7 +1369,7 @@ function showNotice(title, text){
 function hideNotice(){ $("notice").classList.remove("show"); }
 $("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
 
-/* ── service worker & start ──────────────────────────────── */
+/* ── service worker ──────────────────────────────────────── */
 if ("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js").catch(()=>{});
   navigator.serviceWorker.ready.then(reg => {
@@ -1500,89 +1379,46 @@ if ("serviceWorker" in navigator){
     sw.postMessage("version", [ch.port2]);
   }).catch(()=>{});
 }
-applyLang(); applyMode(); keepAwake(); lockPortrait(); startGPS();
 
-  /* ═══════════════════════════════════════════════════════════
-   RitMeter — navigatiemodule (overlay)
+/* ═══════════════════════════════════════════════════════════
+   RitMeter — navigatiemodule (alleen de routelijn)
    - Photon geocoding + BRouter routing (GeoJSON)
-   - afslagen afgeleid uit route-geometrie (links/rechts/aankomst)
-   - off-route-detectie met gedebouncede herberekening
+   - GEEN turn-by-turn: geen afslagen, geen off-route, geen auto-reroute
+   - resterende afstand + ETA via projectie op de routelijn
    - favorieten in localStorage (rm_fav_nav, max 5)
+   - alle zichtbaarheid loopt via state.nav → render()
    ═══════════════════════════════════════════════════════════ */
-
-const PHOTON = "https://photon.komoot.io/api/";
+const PHOTON  = "https://photon.komoot.io/api/";
 const BROUTER = "https://brouter.de/brouter";
-/* route-stijl: "fast" (fastbike/car-fast) of "calm" (trekking) — alleen voor fiets/snor */
-function profileFor(mode){
-  if (mode === "bike" || mode === "snor") return "trekking";
-  return mode === "moped" ? "moped" : "car-fast";   // brom = moped, auto = car-fast
-}
-function navProject(lat, lon, brgDeg, distM){        // punt distM meter vooruit in koers brgDeg
-  const Rm = 6371000, br = brgDeg*Math.PI/180, dr = distM/Rm;
-  const la = lat*Math.PI/180, lo = lon*Math.PI/180;
-  const la2 = Math.asin(Math.sin(la)*Math.cos(dr) + Math.cos(la)*Math.sin(dr)*Math.cos(br));
-  const lo2 = lo + Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la),
-                              Math.cos(dr)-Math.sin(la)*Math.sin(la2));
-  return { lat: la2*180/Math.PI, lon: lo2*180/Math.PI };
-}
+
 /* km/u: cap = realistische bovengrens, def = vaste schatting bij onbruikbare API-tijd */
 const SPEED = { car:{cap:140,def:60}, bike:{cap:35,def:18},
                 moped:{cap:50,def:40}, snor:{cap:30,def:25} };
+function profileFor(mode){
+  if (mode === "bike" || mode === "snor") return "trekking";
+  return mode === "moped" ? "moped" : "car-fast";        // brom = moped, auto = car-fast
+}
 
 const nav = {
-  active:false, profile:"car", dest:null,
-  coords:[], cum:[], maneuvers:[], mIdx:0,
-  distM:0, etaS:0, vAvg:8, destMarker:null,
-  lastNear:null, offSince:null, rerouting:false
+  profile: vehicle, dest: null,
+  coords: [], cum: [], distM: 0, etaS: 0, vAvg: 8,
+  remM: 0, remEtaS: 0,
+  destMarker: null, lastNear: null
 };
-let navHere = null;                 // laatst bekende GPS-positie {lat,lon}
-let navPanelOpenFlag = false;
+let navHere = null;                  // laatst bekende GPS-positie {lat,lon}
 let geoTimer = null, geoSeq = 0;
 
 /* ── geo-helpers ─────────────────────────────────────────── */
-function brg(a, b){                 // peiling a→b in graden (0=N, 90=O)
-  const toR = x => x*Math.PI/180, toD = x => x*180/Math.PI;
-  const y = Math.sin(toR(b.lon-a.lon)) * Math.cos(toR(b.lat));
-  const x = Math.cos(toR(a.lat))*Math.sin(toR(b.lat)) -
-            Math.sin(toR(a.lat))*Math.cos(toR(b.lat))*Math.cos(toR(b.lon-a.lon));
-  return (toD(Math.atan2(y, x)) + 360) % 360;
-}
 /* afstand punt→lijnsegment (meters), lokaal vlak rond p */
 function segDist(p, a, b){
-  const latR = p.lat*Math.PI/180;
-  const mLat = 111320, mLon = 111320*Math.cos(latR);
+  const latR = p.lat*Math.PI/180, mLat = 111320, mLon = 111320*Math.cos(latR);
   const ax=(a.lon-p.lon)*mLon, ay=(a.lat-p.lat)*mLat;
   const bx=(b.lon-p.lon)*mLon, by=(b.lat-p.lat)*mLat;
   const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
-  let t = L2>0 ? -((ax*dx+ay*dy)/L2) : 0;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(ax+t*dx, ay+t*dy);
+  let tt = L2>0 ? -((ax*dx+ay*dy)/L2) : 0;
+  tt = Math.max(0, Math.min(1, tt));
+  return { d: Math.hypot(ax+tt*dx, ay+tt*dy), t: tt };
 }
-
-/* significante knooppunten (afslagen) uit de routegeometrie.
-   Look-back/-ahead over ~18 m dempt flauwe bochten weg, zodat alleen
-   echte richtingsveranderingen (>=35°) een afslag worden. */
-function detectManeuvers(pts, cum){
-  const LOOK = 18, TURN_MIN = 35, MERGE = 25, out = [];
-  for (let i = 1; i < pts.length-1; i++){
-    let b = i; while (b > 0 && cum[i]-cum[b] < LOOK) b--;
-    let f = i; while (f < pts.length-1 && cum[f]-cum[i] < LOOK) f++;
-    if (b === i || f === i) continue;
-    let d = brg(pts[i], pts[f]) - brg(pts[b], pts[i]);
-    while (d > 180) d -= 360;  while (d < -180) d += 360;
-    if (Math.abs(d) >= TURN_MIN){
-      const last = out[out.length-1];
-      if (last && cum[i]-last.dist < MERGE){
-        if (Math.abs(d) > Math.abs(last.turn)){
-          last.i = i; last.lat = pts[i].lat; last.lon = pts[i].lon;
-          last.turn = d; last.dist = cum[i];
-        }
-      } else out.push({ i, lat:pts[i].lat, lon:pts[i].lon, turn:d, dist:cum[i] });
-    }
-  }
-  return out;
-}
-
 /* dichtstbijzijnde route-knooppunt t.o.v. positie (gevensterd voor snelheid) */
 function nearestIdx(here){
   const n = nav.coords.length;
@@ -1594,13 +1430,7 @@ function nearestIdx(here){
     if (d < bd){ bd = d; best = i; }
   }
   nav.lastNear = best;
-  return { idx:best, dist:bd };
-}
-function offRouteDist(here, nearIdx){
-  let best = Infinity;
-  for (let i = Math.max(0, nearIdx-1); i < Math.min(nav.coords.length-1, nearIdx+1); i++)
-    best = Math.min(best, segDist(here, nav.coords[i], nav.coords[i+1]));
-  return best === Infinity ? hv(here, nav.coords[nearIdx] || here) : best;
+  return best;
 }
 
 /* ── favorieten (localStorage, max 5) ────────────────────── */
@@ -1618,8 +1448,7 @@ function favToggle(d){
   updateFavStar();
 }
 function favAdd(item){
-  let list = favGet().filter(f =>
-    !(Math.abs(f.lat-item.lat) < 1e-5 && Math.abs(f.lon-item.lon) < 1e-5));
+  let list = favGet().filter(f => !(Math.abs(f.lat-item.lat)<1e-5 && Math.abs(f.lon-item.lon)<1e-5));
   if (list.length >= 5){ toast(t("nav_fav_full")); list = list.slice(0,4); }
   list.unshift({ name:item.name, lat:item.lat, lon:item.lon });
   favSave(list);
@@ -1671,14 +1500,12 @@ async function geoSearch(q){
                    lat: +f.geometry.coordinates[1], lon: +f.geometry.coordinates[0] }));
     renderResults(items);
   } catch(e){
-    if (seq === geoSeq){ box.innerHTML = ""; const m=document.createElement("div");
-      m.className="navMsg"; m.textContent = t("nav_err"); box.appendChild(m); }
+    if (seq === geoSeq){ box.innerHTML = `<div class="navMsg">${t("nav_err")}</div>`; }
   }
 }
 function renderResults(items){
   const box = $("navResults"); box.innerHTML = "";
-  if (!items.length){ const m=document.createElement("div"); m.className="navMsg";
-    m.textContent = t("nav_none"); box.appendChild(m); return; }
+  if (!items.length){ box.innerHTML = `<div class="navMsg">${t("nav_none")}</div>`; return; }
   items.forEach(it => {
     const b = document.createElement("button"); b.className = "navRes";
     const nm = document.createElement("b"); nm.textContent = it.name.split(",")[0];
@@ -1698,16 +1525,10 @@ function computeEta(distM, apiTimeS, mode){
   if (v > s.cap || v < 3) return distM / (s.def/3.6);     // onrealistisch → vaste schatting
   return apiTimeS;
 }
-async function fetchRoute(o, d, mode, headingDeg){
+async function fetchRoute(o, d, mode){
   const prof = profileFor(mode);
-  let lonlats = `${o.lon.toFixed(6)},${o.lat.toFixed(6)}|`;
-  if (headingDeg != null && !isNaN(headingDeg)){          // richting-bewust: 40 m vooruit als tussenpunt
-    const v = navProject(o.lat, o.lon, headingDeg, 40);
-    lonlats += `${v.lon.toFixed(6)},${v.lat.toFixed(6)}|`;
-  }
-  lonlats += `${d.lon.toFixed(6)},${d.lat.toFixed(6)}`;
-  const url = `${BROUTER}?lonlats=${lonlats}&profile=${prof}` +
-              `&alternativeidx=0&format=geojson&exportWaypoints=1`;
+  const lonlats = `${o.lon.toFixed(6)},${o.lat.toFixed(6)}|${d.lon.toFixed(6)},${d.lat.toFixed(6)}`;
+  const url = `${BROUTER}?lonlats=${lonlats}&profile=${prof}&alternativeidx=0&format=geojson`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("brouter " + res.status);
   const j = await res.json();
@@ -1723,50 +1544,33 @@ function applyRoute(r){
   nav.coords = r.coords;
   nav.cum = [0];
   for (let i = 1; i < r.coords.length; i++) nav.cum[i] = nav.cum[i-1] + hv(r.coords[i-1], r.coords[i]);
-  nav.maneuvers = detectManeuvers(r.coords, nav.cum);
-  const last = r.coords[r.coords.length-1];
-  nav.maneuvers.push({ i:r.coords.length-1, lat:last.lat, lon:last.lon,
-                       turn:0, dist:nav.cum[nav.cum.length-1], arrive:true });
   nav.distM = r.distM; nav.etaS = r.etaS;
   nav.vAvg = r.etaS > 0 ? r.distM / r.etaS : (SPEED[nav.profile].def/3.6);
-  nav.mIdx = 0; nav.lastNear = null; nav.offSince = null;
-  drawNavRoute();
+  nav.remM = r.distM; nav.remEtaS = r.etaS;
+  nav.lastNear = null;
 }
+
+/* route ophalen voor de huidige bestemming; toont preview in het paneel */
 async function navComputeRoute(){
   if (!nav.dest) return;
-  if (!navHere){ $("navInfo").textContent = t("nav_wait_gps"); return; }
-  $("navInfo").textContent = t("nav_calc");
+  if (!navHere){ $("navInfoPanel").textContent = t("nav_wait_gps"); return; }
+  $("navInfoPanel").textContent = t("nav_calc");
   $("navStart").disabled = true;
   try{
     applyRoute(await fetchRoute(navHere, nav.dest, nav.profile));
-    $("navInfo").innerHTML = `<b>${fmtNavDist(nav.distM)}</b> &middot; ${t("eta")} ${fmtEta(nav.etaS)}`;
+    $("navInfoPanel").innerHTML = `<b>${fmtNavDist(nav.distM)}</b> &middot; ${t("eta")} ${fmtEta(nav.etaS)}`;
     $("navStart").disabled = false;
+    if (state.nav === "route"){ drawNavRoute(); render(); }   // actieve route herberekend
   } catch(e){
     console.error(e);
-    clearNavRoute();                       // geen oude (bijv. auto-)route laten staan
-    nav.coords = []; nav.cum = []; nav.maneuvers = [];
-    $("navInfo").textContent = t("nav_err");
+    nav.coords = []; nav.cum = [];
+    clearNavRoute();
+    $("navInfoPanel").textContent = t("nav_err");
     $("navStart").disabled = true;
   }
 }
-async function navReroute(){
-  if (!navHere || nav.rerouting) return;
-  nav.rerouting = true;
-  showReroute(true);
-  try{
-    try{ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile, lastBearing)); } // richting-bewust
-    catch(_){ applyRoute(await fetchRoute(navHere, nav.dest, nav.profile)); }          // val terug zonder richting
-    toast(t("nav_rerouted"));
-  } catch(e){ /* oude route behouden */ }
-  finally{ nav.rerouting = false; nav.offSince = null; showReroute(false); }
-}
-function showReroute(on){
-  const el = $("navHud");
-  if (on){ $("navStreet").textContent = t("nav_rerouting"); el.classList.add("rerouting"); }
-  else el.classList.remove("rerouting");
-}
 
-/* ── route + bestemming op de hoofdkaart ─────────────────── */
+/* ── route + bestemmingspin op de hoofdkaart ─────────────── */
 function drawNavRoute(){
   if (!map || !mapReady || !nav.coords.length) return;
   const data = { type:"Feature", properties:{},
@@ -1776,18 +1580,19 @@ function drawNavRoute(){
     map.addSource("nav-route", { type:"geojson", data });
     map.addLayer({ id:"nav-route-casing", type:"line", source:"nav-route",
       layout:{ "line-cap":"round", "line-join":"round" },
-      paint:{ "line-color":"var(--nav-dark)".replace("var(--nav-dark)","#3A0A33"),
-              "line-width":11, "line-opacity":.95 } });
+      paint:{ "line-color":"#3A0A33", "line-width":11, "line-opacity":.95 } });
     map.addLayer({ id:"nav-route-line", type:"line", source:"nav-route",
       layout:{ "line-cap":"round", "line-join":"round" },
       paint:{ "line-color":"#E000FF", "line-width":6, "line-opacity":.95 } });
   }
-  if (!nav.destMarker){
-    const el = document.createElement("div"); el.className = "navDest";
-    el.innerHTML = `<svg width="30" height="38" viewBox="0 0 24 30"><path d="M12 0a10 10 0 0 0-10 10c0 7 10 20 10 20s10-13 10-20A10 10 0 0 0 12 0z" fill="#E000FF" stroke="#0B0F14" stroke-width="1.5"/><circle cx="12" cy="10" r="4" fill="#0B0F14"/></svg>`;
-    nav.destMarker = new maplibregl.Marker({ element:el, anchor:"bottom" })
-      .setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
-  } else nav.destMarker.setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
+  if (nav.dest){
+    if (!nav.destMarker){
+      const el = document.createElement("div"); el.className = "navDest";
+      el.innerHTML = `<svg width="30" height="38" viewBox="0 0 24 30"><path d="M12 0a10 10 0 0 0-10 10c0 7 10 20 10 20s10-13 10-20A10 10 0 0 0 12 0z" fill="#E000FF" stroke="#0B0F14" stroke-width="1.5"/><circle cx="12" cy="10" r="4" fill="#0B0F14"/></svg>`;
+      nav.destMarker = new maplibregl.Marker({ element:el, anchor:"bottom" })
+        .setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
+    } else nav.destMarker.setLngLat([nav.dest.lon, nav.dest.lat]).addTo(map);
+  }
 }
 function clearNavRoute(){
   if (map){
@@ -1797,42 +1602,7 @@ function clearNavRoute(){
   if (nav.destMarker){ nav.destMarker.remove(); nav.destMarker = null; }
 }
 
-/* ── camera-padding: panelen ontwijken, kaart blijft zichtbaar ── */
-function navPanelOpen(){ return navPanelOpenFlag; }
-function navPadding(){
-  if (!map || !mapReady) return;
-  const land = window.matchMedia("(orientation: landscape)").matches;
-  let pad;
-  if (land){
-    const left = navPanelOpen() ? Math.min(380, Math.round(window.innerWidth*0.44)) + 20 : 130;
-    const tripH = $("trip").offsetHeight;                 // werkelijke hoogte; 0 wanneer verborgen
-    const bottom = tripH ? tripH + 22 : Math.round(window.innerHeight*0.10)+20;
-    pad = { top:64, bottom, left, right:60 };
-  } else {
-    const top = Math.round((document.body.classList.contains("navigating") ? 0.42 : 0.45) * window.innerHeight);
-    const bottom = navPanelOpen() ? Math.round(window.innerHeight*0.40) : 120;
-    pad = { top, bottom, left:24, right:24 };
-  }
-  map.setPadding(pad);
-  if (marker && following) map.easeTo({ center: marker.getLngLat(), duration:300 });
-}
-
-/* ── HUD-weergave ────────────────────────────────────────── */
-function setArrow(type){
-  const b = '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">';
-  const I = {
-    straight:b+'<path d="M12 20V5"/><path d="M6 11l6-6 6 6"/></svg>',
-    left:    b+'<path d="M20 18h-7a4 4 0 0 1-4-4V6"/><path d="M5 10l4-4 4 4"/></svg>',
-    right:   b+'<path d="M4 18h7a4 4 0 0 0 4-4V6"/><path d="M19 10l-4-4-4 4"/></svg>',
-    arrive:  b+'<circle cx="12" cy="10" r="2.5"/><path d="M12 22s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12z"/></svg>'
-  };
-  $("navArrow").innerHTML = I[type] || I.straight;
-}
-function turnType(m){
-  if (!m) return "straight";
-  if (m.arrive) return "arrive";
-  return m.turn > 0 ? "right" : "left";
-}
+/* ── opmaak afstand & ETA ────────────────────────────────── */
 function fmtNavDist(m){
   if (useMph){
     const ft = m*3.28084;
@@ -1847,147 +1617,119 @@ function fmtNavDist(m){
 function fmtEta(s){
   s = Math.round(s);
   const h = Math.floor(s/3600), m = Math.round((s % 3600)/60);
-  return h ? `${h} ${t("eta_hr")} ${m} ${t("eta_min")}`
-           : `${Math.max(1, m)} ${t("eta_min")}`;
-}
-function updateNavHud(){
-  const m = nav.maneuvers[nav.mIdx]; if (!m || !navHere) return;
-  setArrow(turnType(m));
-  $("navDist").textContent = fmtNavDist(hv(navHere, m));
-  const rem = Math.max(0, nav.distM - (nav.cum[nav.lastNear] || 0));
-  const name = nav.dest ? nav.dest.name.split(",")[0] : "";
-  $("navStreet").textContent =
-    (m.arrive ? t("nav_arrived") : name) + " \u00B7 " +
-    fmtNavDist(rem) + " \u00B7 " + fmtEta(rem / (nav.vAvg || 8));
+  return h ? `${h} ${t("eta_hr")} ${m} ${t("eta_min")}` : `${Math.max(1, m)} ${t("eta_min")}`;
 }
 
-/* ── start / stop / aankomst ─────────────────────────────── */
-function navStartGuidance(){
-  if (!nav.coords.length) return;
-  if (focus){ focus = false; LS.setItem("rm_focus","0"); }
-  if (hud){ hud = false; document.body.classList.remove("hud"); }
-  applyMode();                                  // verwijdert focusmode, kaart zichtbaar + resize
-  syncSettingsUI();
-  nav.active = true; nav.mIdx = 0; nav.lastNear = null; nav.offSince = null;
-  document.body.classList.add("navigating");
-  closeNavPanel();
-  $("navHud").classList.add("show");
-  drawNavRoute();
-  setArrow(turnType(nav.maneuvers[0]));
-  if (map) setTimeout(() => map.resize(), 60);
-  navPadding(); render();
-}
-function navStop(){
-  nav.active = false;
-  nav.coords = []; nav.cum = []; nav.maneuvers = []; nav.mIdx = 0;
-  nav.dest = null; nav.lastNear = null; nav.offSince = null;
-  document.body.classList.remove("navigating");
-  $("navHud").classList.remove("show");
-  clearNavRoute();
-  $("navInfo").textContent = "";
-  $("navStart").disabled = true;
-  $("navSaveFav").style.display = "none";
-  navPadding();
-}
-function navArrived(){
-  toast(t("nav_arrived"));
-  setArrow("arrive");
-  $("navDist").textContent = fmtNavDist(0);
-  $("navStreet").textContent = t("nav_arrived");
-  nav.active = false;
-  document.body.classList.remove("navigating");
-  setTimeout(() => { $("navHud").classList.remove("show"); clearNavRoute(); navPadding(); }, 5000);
-}
-
-/* ── per GPS-fix aangeroepen vanuit onFix() ──────────────── */
+/* ── per GPS-fix aangeroepen vanuit onFix() (vóór render) ── */
 function navOnFix(c){
   navHere = { lat:c.latitude, lon:c.longitude };
-  if (nav.active && nav.coords.length && map && mapReady && !map.getSource("nav-route")) drawNavRoute();
-  if (!nav.active || !nav.maneuvers.length) return;
+  if (state.nav !== "route" || !nav.coords.length) return;
+  if (map && mapReady && !map.getSource("nav-route")) drawNavRoute();
 
-  const near = nearestIdx(navHere);
-  /* schuif door naar de eerstvolgende afslag vóór ons */
-  while (nav.mIdx < nav.maneuvers.length-1 && nav.maneuvers[nav.mIdx].i <= near.idx) nav.mIdx++;
-  const m = nav.maneuvers[nav.mIdx];
-  const dToM = hv(navHere, m);                  // afstand tot eerstvolgend knooppunt (haversine)
+  const idx = nearestIdx(navHere);
+  /* projecteer op het segment ná het dichtstbijzijnde knooppunt voor een vloeiende rest-afstand */
+  let along = nav.cum[idx] || 0;
+  if (idx < nav.coords.length-1){
+    const seg = segDist(navHere, nav.coords[idx], nav.coords[idx+1]);
+    along = (nav.cum[idx] || 0) + seg.t * ((nav.cum[idx+1] || 0) - (nav.cum[idx] || 0));
+  }
+  nav.remM = Math.max(0, nav.distM - along);
+  nav.remEtaS = nav.remM / (nav.vAvg || 8);
 
-  if (m.arrive && dToM < 25){ navArrived(); return; }
-  updateNavHud();
-
-  /* off-route → na 8 s gedebounced herberekenen */
-  const off = offRouteDist(navHere, near.idx);
-  if (off > 55){
-    if (nav.offSince === null) nav.offSince = Date.now();
-    else if (Date.now()-nav.offSince > 8000 && !nav.rerouting){ nav.offSince = Date.now(); navReroute(); }
-  } else nav.offSince = null;
+  /* aankomst: dicht bij de bestemming → melden en stoppen */
+  if (nav.remM < 25 || (nav.dest && hv(navHere, nav.dest) < 25)){
+    toast(t("nav_arrived"));
+    navStop();
+  }
 }
 
-/* ── selecteren & paneelbediening ────────────────────────── */
+/* ── selecteren & paneelbediening (muteren state → render) ── */
 function selectDest(item){
   nav.dest = item;
   $("navSearch").value = item.name.split(",")[0];
   $("navResults").innerHTML = "";
-  $("navSaveFav").style.display = "grid";
+  $("navSaveFav").classList.add("show");
   updateFavStar();
   navComputeRoute();
 }
-function openNavPanel(){ navPanelOpenFlag = true; $("navPanel").classList.add("show"); renderFavs(); navPadding(); }
+function openNavPanel(){
+  state.nav = "search";
+  renderFavs();
+  render();
+}
 function closeNavPanel(){
-  navPanelOpenFlag = false;
-  $("navPanel").classList.remove("show");
-  if (!nav.active){                       // alleen-preview (nog niet gestart) → route weghalen
-    nav.coords = []; nav.cum = []; nav.maneuvers = []; nav.dest = null;
-    clearNavRoute();
-    $("navInfo").textContent = "";
-    $("navStart").disabled = true;
-    $("navSaveFav").style.display = "none";
-  }
-  navPadding();
+  if (state.nav === "route"){ render(); return; }     // route loopt: terug naar route-weergave
+  /* alleen-preview → opruimen en terug naar gewone kaart */
+  nav.coords = []; nav.cum = []; nav.dest = null;
+  nav.remM = 0; nav.remEtaS = 0;
+  clearNavRoute();
+  $("navInfoPanel").textContent = "";
+  $("navStart").disabled = true;
+  $("navSaveFav").classList.remove("show");
+  state.nav = "off";
+  render();
+}
+function navStartGuidance(){
+  if (!nav.coords.length) return;
+  state.nav = "route";
+  drawNavRoute();
+  render();
+  if (map) setTimeout(() => map.resize(), 60);
+}
+function navStop(){
+  nav.coords = []; nav.cum = []; nav.dest = null;
+  nav.remM = 0; nav.remEtaS = 0; nav.lastNear = null;
+  clearNavRoute();
+  $("navInfoPanel").textContent = "";
+  $("navStart").disabled = true;
+  $("navSaveFav").classList.remove("show");
+  state.nav = "off";
+  render();
 }
 
-/* ── event-bindings ──────────────────────────────────────── */
-$("navBtn").onclick = openNavPanel;
-$("navClose").onclick = closeNavPanel;
-$("navStopBtn").onclick = navStop;
-$("navStart").onclick = navStartGuidance;
-$("navSaveFav").onclick = () => favToggle(nav.dest);
-$("navSearch").addEventListener("input", e => {
-  clearTimeout(geoTimer);
-  const q = e.target.value.trim();
-  if (q.length < 3){ $("navResults").innerHTML = ""; return; }
-  geoTimer = setTimeout(() => geoSearch(q), 350);   // throttle: respecteer Photon fair-use
-});
-$("navSearch").addEventListener("keydown", e => {
-  if (e.key === "Enter"){ clearTimeout(geoTimer);
-    const q = e.target.value.trim(); if (q.length >= 2) geoSearch(q); }
-});
-/* voertuig bepaalt het routeprofiel én de indeling (meten- vs nav-first) */
+/* ── voertuig = uitsluitend routeprofiel (raakt nooit de layout) ── */
 function applyVehicle(){
-  document.body.classList.toggle("navfirst", vehicle === "car");
-  document.querySelectorAll("#navProfiles button, #vehSeg button")
-    .forEach(b => b.classList.toggle("on", b.dataset.p === vehicle));
+  nav.profile = vehicle;
+  document.querySelectorAll("#vehSeg button").forEach(b => b.classList.toggle("on", b.dataset.p === vehicle));
 }
 function setVehicle(v){
   vehicle = v; nav.profile = v; LS.setItem("rm_vehicle", v);
   applyVehicle();
   if (nav.dest) navComputeRoute();
-  render();
 }
-document.querySelectorAll("#navProfiles button, #vehSeg button").forEach(b => {
-  b.onclick = () => setVehicle(b.dataset.p);
+
+/* ── event-bindings ──────────────────────────────────────── */
+$("navBtn").onclick     = openNavPanel;
+$("navClose").onclick   = closeNavPanel;
+$("navStart").onclick   = navStartGuidance;
+$("navStopBtn").onclick = navStop;
+$("navRecalc").onclick  = () => { if (nav.dest) navComputeRoute(); };
+$("navSaveFav").onclick = () => favToggle(nav.dest);
+$("navSearch").addEventListener("input", e => {
+  clearTimeout(geoTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3){ $("navResults").innerHTML = ""; return; }
+  geoTimer = setTimeout(() => geoSearch(q), 350);    // throttle: respecteer Photon fair-use
 });
-nav.profile = vehicle;
+$("navSearch").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ clearTimeout(geoTimer);
+    const q = e.target.value.trim(); if (q.length >= 2) geoSearch(q); }
+});
+document.querySelectorAll("#vehSeg button").forEach(b => { b.onclick = () => setVehicle(b.dataset.p); });
 applyVehicle();
-window.addEventListener("resize", () => { if (map){ map.resize(); navPadding(); } });
+
+/* ── oriëntatie-/grootte-wissel: kaart bijwerken, padding herberekenen ── */
+window.addEventListener("resize", () => { if (map){ map.resize(); applyMapPadding(); } });
 if (screen.orientation)
   screen.orientation.addEventListener("change",
-    () => setTimeout(() => { if (map){ map.resize(); navPadding(); } }, 250));
+    () => setTimeout(() => { if (map){ map.resize(); applyMapPadding(); } }, 250));
 
-/* labels/placeholders meteen zetten (applyLang draaide al bij init) */
-$("navSearch").placeholder = t("nav_search");
-$("navStart").textContent  = t("nav_start");
-(function(){ const pl={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
-  document.querySelectorAll("#navProfiles button").forEach(b => b.textContent = pl[b.dataset.p]); })();
+/* ── start ───────────────────────────────────────────────── */
+applyLang();   // zet teksten + roept syncSettingsUI() + render() aan
+render();
+keepAwake();
+lockPortrait();
+startGPS();
 </script>
 </body>
 </html>
