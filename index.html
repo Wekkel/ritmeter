@@ -45,6 +45,9 @@
   --sab:env(safe-area-inset-bottom,0px);
   --sal:env(safe-area-inset-left,0px);
   --sar:env(safe-area-inset-right,0px);
+   --ui: 1;
+  --fab: calc(42px * var(--ui));
+  --compass: calc(60px * var(--ui));
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
@@ -82,7 +85,8 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 
 /* knoppenrail */
 #r-controls{display:flex;flex-direction:column;gap:10px}
-.fab{width:42px;height:42px;border-radius:50%;background:var(--panel);
+.fab svg{width:48%;height:48%}
+.fab{width:var(--fab);height:var(--fab);border-radius:50%;background:var(--panel);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
 .fab:active{color:var(--amber)}
@@ -109,9 +113,10 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 #gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
 
 /* kompasroos */
-#r-compass{justify-self:end;align-self:start;width:60px;height:60px;border-radius:50%;
-  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--line)}
+#r-compass{justify-self:end;align-self:start;width:var(--compass);height:var(--compass);
+  border-radius:50%;background:var(--panel);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);border:1px solid var(--line)}
+#r-compass svg{width:100%;height:100%;display:block}
 #r-compass text{font:700 11px system-ui;fill:var(--muted)}
 #r-compass .n{fill:var(--amber)}
 #roseG{transform-origin:30px 30px;transition:transform .6s linear}
@@ -433,6 +438,11 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 #notice p{color:var(--muted);line-height:1.5;font-size:15px}
 #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
   color:#1A1200;font-weight:700}
+   /* Head-unit / CarPlay: groot, vast, lage pixeldichtheid.
+   Carluex meet 1440×516@1; telefoons (402@3, 384@2) vallen op breedte én DPR buiten de boot. */
+@media (min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx){
+  :root{ --ui: 1.7 }
+}
 </style>
 </head>
 <body data-presentation="map" data-nav="off" data-overlay="none" data-mirror="off"
@@ -1063,7 +1073,8 @@ setInterval(() => {
   if (firstFix && Date.now() - lastFixTime > 4000){
     dispSpeed *= .5; if (dispSpeed < .4) dispSpeed = 0;
   }
-  if (dispSpeed < .55){
+  if (dispSpeed > 1.2) lastMotion = Date.now();   // ~4,3 km/u = in beweging
+   if (dispSpeed < .55){
     if (zeroSince === null) zeroSince = Date.now();
     isPaused = autoPause && (Date.now() - zeroSince > 5000);
   } else { zeroSince = null; isPaused = false; }
@@ -1371,31 +1382,73 @@ $("zoomIn").onclick  = () => { if (map) map.zoomTo(Math.min(20, map.getZoom() + 
 $("zoomOut").onclick = () => { if (map) map.zoomTo(Math.max(4,  map.getZoom() - 1), { duration:300 }); };
 
 /* ── scherm aanhouden ────────────────────────────────────── */
-let wakeLock = null, wlLog = [], wlLast = "";
-function wlNote(msg){
-  if (msg === wlLast) return;            // ontdubbel: geen herhaalde gelijke meldingen
-  wlLast = msg;
-  const res = `${innerWidth}×${innerHeight}@${devicePixelRatio}`;
-  wlLog.unshift(new Date().toLocaleTimeString() + " " + msg);
-  wlLog = wlLog.slice(0, 6);
-  $("appVer").textContent = res + " · " + wlLog.join(" / ");
+/* ── scherm aanhouden ────────────────────────────────────────
+   Android/desktop: native Wake Lock API (werkt daar betrouwbaar).
+   iOS: de API rapporteert wel "actief" maar dwingt niets af, dus
+   draaien we daar een onzichtbaar lussend filmpje — zolang iOS
+   denkt dat er video speelt, blijft het scherm wakker.
+   Alleen actief wanneer het ertoe doet: in beweging, of tijdens
+   een rit of navigatie, met een ruime nalooptijd zodat een
+   stoplicht het scherm niet laat doven.                         */
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const KEEP_GRACE = 180000;   // 3 min nalooptijd na laatste beweging
+let lastMotion = 0;
+
+/* onzichtbaar fallback-filmpje (zelfvoorzienend, geen CDN) */
+let keepVid = null;
+function keepVideo(){
+  if (keepVid) return keepVid;
+  const v = document.createElement("video");
+  v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
+  v.setAttribute("playsinline",""); v.setAttribute("muted",""); v.setAttribute("webkit-playsinline","");
+  v.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;bottom:0";
+  v.src = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMQbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAjp0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAGybWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAQABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABXW1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAR1zdGJsAAAAuXN0c2QAAAAAAAAAAQAAAKlhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAAL2F2Y0MBQsAe/+EAF2dCwB7ZBCbARAAAAwAEAAADAAg8WLkgAQAFaMuDyyAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAUkAAAFJAAAAAYc3R0cwAAAAAAAAABAAAAAQAAQAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAACkgAAAAEAAAAUc3RjbwAAAAAAAAABAAADQAAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjAuMTYuMTAwAAAACGZyZWUAAAKabWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAaZYiEBX///w9FAAFC3ycnJ1111111111114A=";
+  document.body.appendChild(v);
+  keepVid = v;
+  return v;
 }
-async function keepAwake(force){
-  if (!("wakeLock" in navigator)){ wlNote("geen API"); return; }
-  if (document.visibilityState !== "visible") return;
-  if (!force && wakeLock && !wakeLock.released) return;   // al actief → niet opnieuw vragen
+
+/* native Wake Lock API (Android/desktop) */
+let wakeLock = null;
+async function acquireWake(){
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  if (wakeLock && !wakeLock.released) return;
   try{
     wakeLock = await navigator.wakeLock.request("screen");
-    wakeLock.addEventListener("release", () => { wakeLock = null; wlNote("vrijgegeven"); });
-    wlNote("actief");
-  } catch(e){ wakeLock = null; wlNote("faalt: " + e.name); }
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch(e){ wakeLock = null; }
 }
-setInterval(() => keepAwake(false), 20000);
-document.addEventListener("pointerdown", () => keepAwake(false));
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") keepAwake(true);   // forceer verse lock bij terugkeer
-});
+function releaseWake(){
+  if (wakeLock){ try { wakeLock.release(); } catch(e){} wakeLock = null; }
+}
 
+/* moet het scherm nú wakker blijven? */
+function shouldStayAwake(){
+  if (trip.running || state.nav === "route") return true;
+  return (Date.now() - lastMotion) < KEEP_GRACE;
+}
+function applyKeepAwake(){
+  if (document.visibilityState !== "visible") return;
+  const want = shouldStayAwake();
+  if (want){
+    acquireWake();
+    if (IS_IOS){ const v = keepVideo(); if (v.paused) v.play().catch(()=>{}); }
+  } else {
+    releaseWake();
+    if (IS_IOS && keepVid && !keepVid.paused) keepVid.pause();
+  }
+}
+
+/* iOS vereist dat het filmpje één keer vanuit een aanraking start;
+   daarna mogen we het programmatisch sturen. */
+document.addEventListener("pointerdown", () => {
+  if (IS_IOS){ const v = keepVideo(); v.play().then(() => { if (!shouldStayAwake()) v.pause(); }).catch(()=>{}); }
+  applyKeepAwake();
+}, { once:false });
+
+setInterval(applyKeepAwake, 5000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyKeepAwake(); });
 /* ── rotatie vergrendelen op portret ─────────────────────── */
 async function lockPortrait(){
   try{ if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("portrait"); }
@@ -1804,7 +1857,7 @@ if (screen.orientation)
 /* ── start ───────────────────────────────────────────────── */
 applyLang();   // zet teksten + roept syncSettingsUI() + render() aan
 render();
-keepAwake();
+applyKeepAwake();
 lockPortrait();
 startGPS();
 
