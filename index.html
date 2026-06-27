@@ -1371,27 +1371,29 @@ $("zoomIn").onclick  = () => { if (map) map.zoomTo(Math.min(20, map.getZoom() + 
 $("zoomOut").onclick = () => { if (map) map.zoomTo(Math.max(4,  map.getZoom() - 1), { duration:300 }); };
 
 /* ── scherm aanhouden ────────────────────────────────────── */
-let wakeLock = null;
-let wlLog = [];
+let wakeLock = null, wlLog = [], wlLast = "";
 function wlNote(msg){
+  if (msg === wlLast) return;            // ontdubbel: geen herhaalde gelijke meldingen
+  wlLast = msg;
   const res = `${innerWidth}×${innerHeight}@${devicePixelRatio}`;
   wlLog.unshift(new Date().toLocaleTimeString() + " " + msg);
-  wlLog = wlLog.slice(0, 4);
+  wlLog = wlLog.slice(0, 6);
   $("appVer").textContent = res + " · " + wlLog.join(" / ");
 }
-async function keepAwake(){
+async function keepAwake(force){
   if (!("wakeLock" in navigator)){ wlNote("geen API"); return; }
   if (document.visibilityState !== "visible") return;
+  if (!force && wakeLock && !wakeLock.released) return;   // al actief → niet opnieuw vragen
   try{
     wakeLock = await navigator.wakeLock.request("screen");
     wakeLock.addEventListener("release", () => { wakeLock = null; wlNote("vrijgegeven"); });
     wlNote("actief");
   } catch(e){ wakeLock = null; wlNote("faalt: " + e.name); }
 }
-setInterval(keepAwake, 20000);
-document.addEventListener("pointerdown", keepAwake);
+setInterval(() => keepAwake(false), 20000);
+document.addEventListener("pointerdown", () => keepAwake(false));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") keepAwake();
+  if (document.visibilityState === "visible") keepAwake(true);   // forceer verse lock bij terugkeer
 });
 
 /* ── rotatie vergrendelen op portret ─────────────────────── */
