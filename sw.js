@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.0.2";                 // ← bump bij wijziging van shell of deze worker - iphone awake debugging2
+const VERSION = "1.0.3";                 // ← bump bij wijziging van shell of deze worker - iphone awake debugging2
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
