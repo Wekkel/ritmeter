@@ -137,18 +137,20 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 #r-recenter:active{color:var(--amber)}
 
 /* nav-info: rustige regel met resterende afstand + ETA */
-#r-navinfo{align-self:end;display:flex;align-items:center;gap:10px;
+#r-navinfo{align-self:end;display:flex;align-items:center;gap:calc(10px * var(--ui));
   background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--nav);border-radius:99px;padding:8px 14px;
-  font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  border:1px solid var(--nav);border-radius:99px;
+  padding:calc(8px * var(--ui)) calc(14px * var(--ui));
+  font-size:calc(14px * var(--ui));color:var(--text);font-variant-numeric:tabular-nums;
   box-shadow:0 4px 16px rgba(0,0,0,.4)}
 #r-navinfo .nf{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#r-navinfo b{font-family:"Chakra Petch",sans-serif;font-size:16px;color:var(--text)}
-#navRecalc{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
-  background:#141C25;border:1px solid var(--line);color:var(--muted)}
+#r-navinfo b{font-family:"Chakra Petch",sans-serif;font-size:calc(17px * var(--ui));color:var(--text)}
+#navRecalc{flex:none;width:calc(34px * var(--ui));height:calc(34px * var(--ui));border-radius:50%;
+  display:grid;place-items:center;background:#141C25;border:1px solid var(--line);color:var(--muted)}
 #navRecalc:active{color:var(--nav)}
-#navStopBtn{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
-  background:#2A1313;border:1px solid #5c2727;color:#FF8A8A;font-size:20px;line-height:1}
+#navStopBtn{flex:none;width:calc(34px * var(--ui));height:calc(34px * var(--ui));border-radius:50%;
+  display:grid;place-items:center;background:#2A1313;border:1px solid #5c2727;color:#FF8A8A;
+  font-size:calc(20px * var(--ui));line-height:1}
 
 /* tripbalk */
 #r-trip{align-self:end;background:var(--panel);
@@ -296,11 +298,12 @@ body[data-overlay="detail"] #detail{display:flex}
   #r-zoom{grid-area:zoom}
   #r-altitude{display:none}                 /* hoogte-uitlezing alleen relevant in portret */
   #r-recenter{grid-area:recenter}
-  #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(360px,46vw)}
-  #r-trip{grid-area:trip;align-self:end;justify-self:start;width:min(440px,46vw)}
+  #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(calc(360px * var(--ui)),46vw)}
+  #r-trip{grid-area:trip;align-self:end;justify-self:start;width:min(calc(440px * var(--ui)),46vw)}
   #r-trip #stats{margin-bottom:8px;gap:5px}
-  #r-trip .stat b{font-size:16.5px}
-  #r-trip .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
+  #r-trip .stat b{font-size:calc(16.5px * var(--ui))}
+  #r-trip .stat span{font-size:calc(10px * var(--ui))}
+  #r-trip .btn{padding-top:10px;padding-bottom:10px;font-size:calc(14px * var(--ui))}
 
   /* in liggend toont hoogte/kompas niet via voorkeur; herstel kompas alleen */
   body[data-presentation="map"][data-altitude="on"] #r-altitude{display:none}
@@ -799,6 +802,7 @@ function measuring(){
 
 let lastPos = null, lastSample = null, fixBuf = [], dispSpeed = 0;
 let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, lastLon = null;
+let lastMotion = 0;
 const GEOID_NL = 43;
 let altOffset = parseFloat(LS.getItem("rm_altoff"));
 if (!isFinite(altOffset)) altOffset = GEOID_NL;
@@ -908,10 +912,11 @@ function render(){
     : Math.round(lastBearing) + "° " + cardinal(lastBearing);
   if (lastBearing != null) $("roseG").style.transform = `rotate(${-lastBearing}deg)`;
 
-  /* nav-info-regel (resterende afstand + ETA) */
+  /* nav-info-regel (resterende afstand + rijtijd + aankomsttijd) */
   if (state.nav === "route" && nav.coords.length){
     $("navInfoTxt").innerHTML =
-      `<b>${fmtNavDist(nav.remM)}</b> &middot; ${t("eta")} ${fmtEta(nav.remEtaS)}`;
+      `<b>${fmtNavDist(nav.remM)}</b> &middot; ${fmtEta(nav.remEtaS)}` +
+      ` &middot; ${t("eta")} <b>${fmtArrival(nav.remEtaS)}</b>`;
   }
 
   /* groot-getal-hint */
@@ -1085,6 +1090,10 @@ setInterval(() => {
   LS.setItem("rm_trip", JSON.stringify(trip));
   if (trip.running) LS.setItem("rm_route", JSON.stringify(route));
 }, 15000);
+addEventListener("pagehide", () => {
+  LS.setItem("rm_trip", JSON.stringify(trip));
+  if (trip.running) LS.setItem("rm_route", JSON.stringify(route));
+});
 
 /* ── meten: start/stop/reset ─────────────────────────────── */
 function toggleTrip(){
@@ -1393,7 +1402,6 @@ $("zoomOut").onclick = () => { if (map) map.zoomTo(Math.max(4,  map.getZoom() - 
 const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const KEEP_GRACE = 180000;   // 3 min nalooptijd na laatste beweging
-let lastMotion = 0;
 
 /* onzichtbaar fallback-filmpje (zelfvoorzienend, geen CDN) */
 let keepVid = null;
@@ -1655,7 +1663,9 @@ async function navComputeRoute(){
   $("navStart").disabled = true;
   try{
     applyRoute(await fetchRoute(navHere, nav.dest, nav.profile));
-    $("navInfoPanel").innerHTML = `<b>${fmtNavDist(nav.distM)}</b> &middot; ${t("eta")} ${fmtEta(nav.etaS)}`;
+    $("navInfoPanel").innerHTML =
+      `<b>${fmtNavDist(nav.distM)}</b> &middot; ${fmtEta(nav.etaS)}` +
+      ` &middot; ${t("eta")} ${fmtArrival(nav.etaS)}`;
     $("navStart").disabled = false;
     if (state.nav === "route"){ drawNavRoute(); render(); }   // actieve route herberekend
   } catch(e){
@@ -1715,6 +1725,10 @@ function fmtEta(s){
   s = Math.round(s);
   const h = Math.floor(s/3600), m = Math.round((s % 3600)/60);
   return h ? `${h} ${t("eta_hr")} ${m} ${t("eta_min")}` : `${Math.max(1, m)} ${t("eta_min")}`;
+}
+function fmtArrival(remS){
+  return new Date(Date.now() + remS*1000)
+    .toLocaleTimeString(loc(), { hour:"2-digit", minute:"2-digit" });
 }
 
 /* automatisch herberekenen vanaf de huidige positie wanneer je van de route bent */
@@ -1861,10 +1875,7 @@ applyKeepAwake();
 lockPortrait();
 startGPS();
 
-/* TIJDELIJK — resolutie meten, daarna weer weghalen */
-setTimeout(() => {
-  $("appVer").textContent = `${innerWidth}×${innerHeight} @${devicePixelRatio}`;
-}, 1500);
+
 </script>
 </body>
 </html>
