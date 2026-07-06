@@ -299,8 +299,9 @@ body[data-overlay="detail"] #detail{display:flex}
   #r-altitude{display:none}                 /* hoogte-uitlezing alleen relevant in portret */
   #r-recenter{grid-area:recenter}
   #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(calc(360px * var(--ui)),46vw)}
-  #r-trip{grid-area:trip;align-self:end;justify-self:start;width:min(calc(440px * var(--ui)),46vw)}
-  #r-trip #stats{margin-bottom:8px;gap:5px}
+ #r-trip{grid-area:trip;align-self:end;justify-self:start;width:fit-content;max-width:46vw}
+  #r-trip #stats{margin-bottom:8px;gap:5px;grid-template-columns:repeat(4,auto);
+    justify-content:space-between;column-gap:calc(18px * var(--ui))}
   #r-trip .stat b{font-size:calc(16.5px * var(--ui))}
   #r-trip .stat span{font-size:calc(10px * var(--ui))}
   #r-trip .btn{padding-top:10px;padding-bottom:10px;font-size:calc(14px * var(--ui))}
@@ -933,9 +934,13 @@ function applyMapPadding(){
   if (land){
     const left = panelOpen ? Math.min(380, Math.round(innerWidth*0.44)) + 20 : 130;
     pad = { top: Math.round(innerHeight*0.42), bottom: tripH ? tripH + 22 : 60, left, right:60 };
-  } else {
+ } else {
     const top = Math.round((state.presentation === "map" ? 0.58 : 0.45) * innerHeight);
-    const bottom = panelOpen ? Math.round(innerHeight*0.40) : (tripH ? tripH + 22 : 120);
+    /* tijdens navigatie telt de navinfo-balk mee + extra marge, zodat de
+       positiedriehoek hoger komt te staan en er meer kaart onder zichtbaar is */
+    const navH = (state.presentation === "map" && state.nav === "route")
+      ? ($("r-navinfo").offsetHeight || 0) + 34 : 0;
+    const bottom = panelOpen ? Math.round(innerHeight*0.40) : (tripH ? tripH + navH + 22 : navH + 120);
     pad = { top, bottom, left:24, right:24 };
   }
   map.setPadding(pad);
