@@ -955,7 +955,7 @@ let map, marker;
    Alleen marker + camera gebruiken deze voorspellende weergavelaag. */
 const MOTION_FPS = 30;
 const MOTION_FRAME_MS = 1000 / MOTION_FPS;
-
+   
 /* Marker en kaartcamera hebben bewust een verschillend tempo.
    De marker blijft vloeiend op maximaal 30 fps bewegen.
    De camera volgt rustiger op maximaal 15 fps en wordt volledig
@@ -965,6 +965,24 @@ const CAMERA_FRAME_MS = 1000 / CAMERA_FPS;
 const CAMERA_GESTURE_GRACE_MS = 220;
 const CAMERA_BUTTON_ZOOM_BLOCK_MS = 420;
 
+/* ── stationary lock ────────────────────────────────────────
+   GPS-fixes van een stilstaand toestel vormen meestal geen exact punt,
+   maar een kleine wolk. Na overtuigende stilstand vergrendelen we alleen
+   de visuele positie. Ruwe GPS blijft leidend voor logging en navigatie. */
+const STATIONARY_WINDOW_MS = 6500;
+const STATIONARY_MIN_SPAN_MS = 4800;
+const STATIONARY_ENTER_CONFIRM_MS = 2200;
+
+const STATIONARY_SPEED_MAX_MS = 1.15;       // kandidaat stilstand: ~4,1 km/u
+const STATIONARY_EXIT_SPEED_MS = 1.65;      // duidelijke beweging: ~5,9 km/u
+
+const STATIONARY_RADIUS_MIN_M = 4.5;
+const STATIONARY_RADIUS_MAX_M = 11;
+
+const STATIONARY_EXIT_DIST_MIN_M = 7;
+const STATIONARY_EXIT_DIST_MAX_M = 18;
+const STATIONARY_EXIT_CONFIRM_FIXES = 2;
+   
 const MOTION_HARD_SNAP_MIN_M = 40;
 const MOTION_HARD_SNAP_MAX_M = 120;
 const MOTION_STALE_HOLD_S = 10;       // tunnel: laatste snelheid eerst vasthouden
@@ -977,6 +995,168 @@ const motion = {
   routeAlong:null, routeMode:false,
   raf:0, lastDraw:0
 };
+
+/* Visuele stilstandstoestand.
+   lockPos is uitsluitend een renderpositie; raw GPS blijft onaangetast. */
+const stationary = {
+  active:false,
+  candidateSince:0,
+  lockPos:null,
+  lockBearing:null,
+  exitEvidence:0
+};
+
+function stationaryRadiusLimit(acc){
+  const a = Number.isFinite(acc) ? acc : 999;
+
+  return Math.max(
+    STATIONARY_RADIUS_MIN_M,
+    Math.min(
+      STATIONARY_RADIUS_MAX_M,
+      a * 0.85
+    )
+  );
+}
+
+function stationaryExitDistance(acc){
+  const a = Number.isFinite(acc) ? acc : 999;
+
+  return Math.max(
+    STATIONARY_EXIT_DIST_MIN_M,
+    Math.min(
+      STATIONARY_EXIT_DIST_MAX_M,
+      a * 1.4
+    )
+  );
+}
+
+/* Bepaal een robuust middelpunt van recente fixes.
+   We gebruiken het gemiddelde van lat/lon; uitschieters beïnvloeden
+   de radiuscontrole vervolgens vanzelf negatief en verhinderen dan
+   een te snelle stationary lock. */
+function recentFixCluster(ts){
+  const fixes = fixBuf.filter(f => ts - f.t <= STATIONARY_WINDOW_MS);
+
+  if (fixes.length < 3) return null;
+
+  const spanMs = fixes[fixes.length - 1].t - fixes[0].t;
+  if (spanMs < STATIONARY_MIN_SPAN_MS) return null;
+
+  let lat = 0;
+  let lon = 0;
+
+  for (const f of fixes){
+    lat += f.lat;
+    lon += f.lon;
+  }
+
+  const center = {
+    lat:lat / fixes.length,
+    lon:lon / fixes.length
+  };
+
+  let maxRadius = 0;
+
+  for (const f of fixes){
+    maxRadius = Math.max(maxRadius, hv(center, f));
+  }
+
+  return {
+    center,
+    maxRadius,
+    spanMs,
+    count:fixes.length
+  };
+}
+
+function clearStationaryCandidate(){
+  stationary.candidateSince = 0;
+}
+
+/* Wordt per GPS-fix aangeroepen.
+   rawSpeed is de actuele GPS-/afgeleide snelheid vóór visuele filtering. */
+function updateStationaryState(ts, rawSpeed, acc){
+  const here = {
+    lat:lastLat,
+    lon:lastLon
+  };
+
+  if (here.lat == null || here.lon == null) return;
+
+  /* ── reeds vergrendeld: alleen loslaten bij overtuigende beweging ── */
+  if (stationary.active){
+    const distFromLock = stationary.lockPos
+      ? hv(stationary.lockPos, here)
+      : 0;
+
+    const fastEnough =
+      rawSpeed != null &&
+      Number.isFinite(rawSpeed) &&
+      rawSpeed >= STATIONARY_EXIT_SPEED_MS;
+
+    const farEnough =
+      distFromLock >= stationaryExitDistance(acc);
+
+    if (fastEnough || farEnough){
+      stationary.exitEvidence++;
+    } else {
+      stationary.exitEvidence = 0;
+    }
+
+    if (stationary.exitEvidence >= STATIONARY_EXIT_CONFIRM_FIXES){
+      stationary.active = false;
+      stationary.candidateSince = 0;
+      stationary.lockPos = null;
+      stationary.lockBearing = null;
+      stationary.exitEvidence = 0;
+    }
+
+    return;
+  }
+
+  /* ── nog bewegend: onderzoeken of fixes een compacte cluster vormen ── */
+  const cluster = recentFixCluster(ts);
+
+  const slowEnough =
+    rawSpeed == null ||
+    !Number.isFinite(rawSpeed) ||
+    rawSpeed <= STATIONARY_SPEED_MAX_MS;
+
+  const compactEnough =
+    cluster &&
+    cluster.maxRadius <= stationaryRadiusLimit(acc);
+
+  if (!slowEnough || !compactEnough){
+    clearStationaryCandidate();
+    return;
+  }
+
+  if (!stationary.candidateSince){
+    stationary.candidateSince = Date.now();
+    return;
+  }
+
+  if (
+    Date.now() - stationary.candidateSince <
+    STATIONARY_ENTER_CONFIRM_MS
+  ){
+    return;
+  }
+
+  /* Overtuigende stilstand: vergrendel de visuele positie op het
+     middelpunt van de recente GPS-cluster, niet op één willekeurige fix. */
+  stationary.active = true;
+  stationary.lockPos = {
+    lat:cluster.center.lat,
+    lon:cluster.center.lon
+  };
+  stationary.lockBearing =
+    motion.bearing ??
+    lastBearing ??
+    null;
+
+  stationary.exitEvidence = 0;
+}
 
 /* Camera-control staat los van de marker-smoothing.
    Daardoor kan de driehoek blijven bewegen terwijl MapLibre
@@ -1122,13 +1302,27 @@ function setMotionTarget(target, acc, speed){
   motion.anchorBearing = target.bearing == null
     ? motion.bearing
     : normBearing(target.bearing);
-  motion.anchorPerf = now;
-  motion.speed = Math.max(0, speed || 0);
+    motion.anchorPerf = now;
+
+  /* Tijdens stationary lock is visuele extrapolatie expliciet nul.
+     De ruwe snelheid elders in de app blijft onaangetast. */
+  motion.speed = stationary.active
+    ? 0
+    : Math.max(0, speed || 0);
+
   motion.acc = acc || 999;
-  motion.routeAlong = target.routeAlong == null ? null : target.routeAlong;
-  motion.routeMode = target.routeAlong != null;
+
+  motion.routeAlong = stationary.active
+    ? null
+    : (target.routeAlong == null ? null : target.routeAlong);
+
+  motion.routeMode =
+    !stationary.active &&
+    target.routeAlong != null;
+
   ensureMotionLoop();
 }
+   
 function drawMotionFrame(now){
   motion.raf = 0;
   if (document.visibilityState !== "visible" || state.presentation !== "map" || !marker) return;
@@ -1281,7 +1475,17 @@ function onFix(pos){
   const c = pos.coords, ts = pos.timestamp;
   lastFixTime = Date.now();
   lastLat = c.latitude; lastLon = c.longitude;
-  if (!firstFix){ firstFix = true; initMap(c.longitude, c.latitude); }
+  if (!firstFix){
+    firstFix = true;
+
+    stationary.active = false;
+    stationary.candidateSince = 0;
+    stationary.lockPos = null;
+    stationary.lockBearing = null;
+    stationary.exitEvidence = 0;
+
+    initMap(c.longitude, c.latitude);
+  }
 
   const acc = c.accuracy ?? 999;
   $("gpsDot").className = acc <= 8 ? "ok" : acc <= 25 ? "mid" : "";
@@ -1306,32 +1510,65 @@ function onFix(pos){
     if (dt > 0.8) m = hv(ref, {lat:c.latitude, lon:c.longitude}) / dt;
   }
 
-  let still = false;
-  const old5 = fixBuf.find(f => ts - f.t >= 4500);
-  if (old5){
-    const moved = hv(old5, {lat:c.latitude, lon:c.longitude});
-    if (moved < Math.max(4, Math.min(acc, 25) * .8)) still = true;
-  }
-  if (still){
-    dispSpeed *= .3; if (dispSpeed < .45) dispSpeed = 0;
-  } else if (m !== null){
-    if (m < .6) m = 0;
-    dispSpeed += alphaFor(acc, m) * (m - dispSpeed);
-    if (dispSpeed < .45 && m < .7) dispSpeed = 0;
-  }
-  if (c.heading != null && !isNaN(c.heading) && dispSpeed > 1.1){
-    lastBearing = normBearing(c.heading);
-  } else if (dispSpeed > 1.1 && fixBuf.length > 1){
-    /* Android levert heading niet op ieder toestel/fix. Leid dan koers af uit
-       voldoende verplaatsing, zodat vrij rijden in 3D toch kan extrapoleren. */
-    let ref = null;
-    for (let i=fixBuf.length-2; i>=0; i--){
-      if (ts-fixBuf[i].t >= 1000){ ref=fixBuf[i]; break; }
+   /* Stationary state wordt bepaald uit meerdere recente fixes.
+     Dit beïnvloedt alleen de visuele stilstandsmodus en de weergegeven
+     snelheid; ruwe GPS blijft elders beschikbaar voor logging/nav. */
+  updateStationaryState(ts, m, acc);
+
+  if (stationary.active){
+    /* Terwijl de visuele positie vergrendeld is, laat de weergegeven
+       snelheid snel maar niet abrupt naar nul zakken. */
+    dispSpeed *= .22;
+
+    if (dispSpeed < .35){
+      dispSpeed = 0;
     }
-    if (ref){
-      const here = { lat:c.latitude, lon:c.longitude };
-      const moved = hv(ref, here);
-      if (moved >= Math.max(3, Math.min(acc,20)*.6)) lastBearing = routeBearing(ref, here);
+  } else if (m !== null){
+    if (m < .6){
+      m = 0;
+    }
+
+    dispSpeed += alphaFor(acc, m) * (m - dispSpeed);
+
+    if (dispSpeed < .45 && m < .7){
+      dispSpeed = 0;
+    }
+  }
+   /* Bij overtuigende stilstand bevriezen we de koers.
+     Een GPS-heading bij vrijwel nul snelheid is visueel betekenisloos
+     en veroorzaakt anders draaiende marker/horizon. */
+  if (!stationary.active){
+    if (
+      c.heading != null &&
+      !isNaN(c.heading) &&
+      dispSpeed > 1.1
+    ){
+      lastBearing = normBearing(c.heading);
+
+    } else if (dispSpeed > 1.1 && fixBuf.length > 1){
+      /* Android levert heading niet op ieder toestel/fix. Leid dan koers af uit
+         voldoende verplaatsing, zodat vrij rijden in 3D toch kan extrapoleren. */
+      let ref = null;
+
+      for (let i = fixBuf.length - 2; i >= 0; i--){
+        if (ts - fixBuf[i].t >= 1000){
+          ref = fixBuf[i];
+          break;
+        }
+      }
+
+      if (ref){
+        const here = {
+          lat:c.latitude,
+          lon:c.longitude
+        };
+
+        const moved = hv(ref, here);
+
+        if (moved >= Math.max(3, Math.min(acc, 20) * .6)){
+          lastBearing = routeBearing(ref, here);
+        }
+      }
     }
   }
 
@@ -1362,12 +1599,35 @@ function onFix(pos){
     lastPos = { lat:c.latitude, lon:c.longitude, t:ts };
   }
 
-  /* Navigatieberekeningen blijven op de ruwe fix draaien. De teruggegeven
-     projectie mag uitsluitend de visuele marker/camera beïnvloeden. */
+   /* Navigatieberekeningen blijven altijd op de ruwe GPS-fix draaien.
+     Stationary lock mag dus geen aankomst-, off-route- of reroute-logica
+     kunstmatig beïnvloeden. */
   const routeProj = navOnFix(c);
-  updateCamera(c.longitude, c.latitude, lastBearing, acc, routeProj);
+
+  if (stationary.active && stationary.lockPos){
+    /* Alleen de visuele laag krijgt het vergrendelde clustercentrum.
+       Geen route-snap tijdens stationary lock: een reeds stilstaande
+       marker moet niet alsnog langs de routelijn gaan schuiven. */
+    updateCamera(
+      stationary.lockPos.lon,
+      stationary.lockPos.lat,
+      stationary.lockBearing,
+      acc,
+      null
+    );
+  } else {
+    updateCamera(
+      c.longitude,
+      c.latitude,
+      lastBearing,
+      acc,
+      routeProj
+    );
+  }
+
   render();
 }
+   
 function onErr(e){
   if (e.code === 1) showNotice(t("ntc_deny"), t("ntc_deny_t"));
   else $("gpsTxt").textContent = t("nofix");
