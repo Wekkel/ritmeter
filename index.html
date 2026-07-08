@@ -909,9 +909,17 @@ function render(){
     : inNL(lastLat, lastLon) ? t("alt_nap") : t("alt_msl");
   $("altVal").textContent = napAlt == null ? "—"
     : useMph ? Math.round(napAlt * 3.28084) + " ft" : Math.round(napAlt) + " m";
-  $("hdgVal").textContent = lastBearing == null ? "—"
-    : Math.round(lastBearing) + "° " + cardinal(lastBearing);
-  if (lastBearing != null) $("roseG").style.transform = `rotate(${-lastBearing}deg)`;
+    const displayBearing =
+    bearingState.marker ??
+    lastBearing;
+
+  $("hdgVal").textContent = displayBearing == null ? "—"
+    : Math.round(displayBearing) + "° " + cardinal(displayBearing);
+
+  if (displayBearing != null){
+    $("roseG").style.transform =
+      `rotate(${-displayBearing}deg)`;
+  }
 
   /* nav-info-regel (resterende afstand + rijtijd + aankomsttijd) */
   if (state.nav === "route" && nav.coords.length){
@@ -982,6 +990,35 @@ const STATIONARY_RADIUS_MAX_M = 11;
 const STATIONARY_EXIT_DIST_MIN_M = 7;
 const STATIONARY_EXIT_DIST_MAX_M = 18;
 const STATIONARY_EXIT_CONFIRM_FIXES = 2;
+/* ── bearing / horizon smoothing ────────────────────────────
+   Positie, markerkoers en camerakoers hebben bewust verschillende
+   filters. Vooral bij wandelen is een koers uit enkele meters GPS-
+   verplaatsing te ruisachtig om direct de 3D-camera te draaien. */
+
+/* Minimale snelheid voor betrouwbare koersverwerking. */
+const BEARING_MIN_SPEED_MS = 0.9;
+
+/* Bewegingsbasis voor GPS-afgeleide koers.
+   Bij lage snelheid gebruiken we een veel langere basis. */
+const BEARING_WALK_BASE_MIN_M = 9;
+const BEARING_WALK_BASE_MAX_M = 22;
+const BEARING_VEHICLE_BASE_MIN_M = 5;
+
+/* Kleine koerswijzigingen worden niet direct doorgegeven. */
+const BEARING_MARKER_DEADBAND_LOW_DEG = 5;
+const BEARING_MARKER_DEADBAND_HIGH_DEG = 2;
+
+const BEARING_CAMERA_DEADBAND_LOW_DEG = 7;
+const BEARING_CAMERA_DEADBAND_HIGH_DEG = 3;
+
+/* Tijdconstanten: hoger = rustiger/langzamer. */
+const BEARING_MARKER_TAU_WALK_S = 1.15;
+const BEARING_MARKER_TAU_MID_S = 0.65;
+const BEARING_MARKER_TAU_FAST_S = 0.38;
+
+const BEARING_CAMERA_TAU_WALK_S = 2.4;
+const BEARING_CAMERA_TAU_MID_S = 1.25;
+const BEARING_CAMERA_TAU_FAST_S = 0.72;
    
 const MOTION_HARD_SNAP_MIN_M = 40;
 const MOTION_HARD_SNAP_MAX_M = 120;
@@ -1004,6 +1041,18 @@ const stationary = {
   lockPos:null,
   lockBearing:null,
   exitEvidence:0
+};
+
+/* Marker- en camerakoers worden apart gefilterd.
+   measured is de laatst geaccepteerde koersmeting.
+   marker is de visuele richting van de driehoek.
+   camera is de rustigere richting van de 3D-kaart. */
+const bearingState = {
+  measured:null,
+  marker:null,
+  camera:null,
+  lastMarkerPerf:0,
+  lastCameraPerf:0
 };
 
 function stationaryRadiusLimit(acc){
@@ -1103,12 +1152,21 @@ function updateStationaryState(ts, rawSpeed, acc){
       stationary.exitEvidence = 0;
     }
 
-    if (stationary.exitEvidence >= STATIONARY_EXIT_CONFIRM_FIXES){
+        if (stationary.exitEvidence >= STATIONARY_EXIT_CONFIRM_FIXES){
       stationary.active = false;
       stationary.candidateSince = 0;
       stationary.lockPos = null;
       stationary.lockBearing = null;
       stationary.exitEvidence = 0;
+
+      /* Na echte stilstand moeten marker en camera niet eerst vanaf
+         een mogelijk oude koers minutenlang terugfilteren. De eerstvolgende
+         betrouwbare bewegingskoers mag een nieuwe basis vormen. */
+      bearingState.measured = null;
+      bearingState.marker = null;
+      bearingState.camera = null;
+      bearingState.lastMarkerPerf = 0;
+      bearingState.lastCameraPerf = 0;
     }
 
     return;
@@ -1223,15 +1281,201 @@ function drawFollowCamera(now){
     return;
   }
 
+  const prevDraw = cameraControl.lastDraw;
   cameraControl.lastDraw = now;
 
+  /* Camerakoers is bewust rustiger dan markerkoers.
+     De driehoek mag dus een bocht eerder tonen terwijl de horizon
+     pas volgt wanneer de koerswijziging stabiel genoeg is. */
+  const cameraTargetBearing = stationary.active
+    ? stationary.lockBearing
+    : (
+        bearingState.marker ??
+        bearingState.measured ??
+        motion.bearing ??
+        lastBearing
+      );
+
+  let cameraBearing = map.getBearing();
+
+  if (cameraTargetBearing != null){
+    if (bearingState.camera == null){
+      bearingState.camera = normBearing(cameraTargetBearing);
+      bearingState.lastCameraPerf = now;
+    } else {
+      const dtS = bearingState.lastCameraPerf
+        ? Math.min(
+            0.35,
+            Math.max(
+              0,
+              (now - bearingState.lastCameraPerf) / 1000
+            )
+          )
+        : (
+            prevDraw
+              ? Math.min(0.35, Math.max(0, (now - prevDraw) / 1000))
+              : 0
+          );
+
+      bearingState.lastCameraPerf = now;
+
+      const delta = Math.abs(
+        shortestBearingDelta(
+          bearingState.camera,
+          cameraTargetBearing
+        )
+      );
+
+      if (
+        stationary.active ||
+        delta >= cameraBearingDeadband(dispSpeed)
+      ){
+        const alpha = stationary.active
+          ? 1
+          : expAlpha(
+              dtS,
+              cameraBearingTau(dispSpeed)
+            );
+
+        bearingState.camera = bearingLerp(
+          bearingState.camera,
+          cameraTargetBearing,
+          alpha
+        );
+      }
+    }
+
+    cameraBearing = bearingState.camera;
+  }
+
   map.jumpTo({
-    center:[motion.pos.lon, motion.pos.lat],
-    bearing:motion.bearing ?? map.getBearing()
+    center:[
+      motion.pos.lon,
+      motion.pos.lat
+    ],
+    bearing:cameraBearing
   });
 }
 
 const normBearing = deg => ((deg % 360) + 360) % 360;
+
+function shortestBearingDelta(fromDeg, toDeg){
+  if (fromDeg == null || toDeg == null) return 0;
+
+  return (
+    (toDeg - fromDeg + 540) % 360
+  ) - 180;
+}
+
+function bearingLerp(fromDeg, toDeg, alpha){
+  if (fromDeg == null) return normBearing(toDeg);
+  if (toDeg == null) return normBearing(fromDeg);
+
+  const d = shortestBearingDelta(fromDeg, toDeg);
+
+  return normBearing(
+    fromDeg + d * Math.max(0, Math.min(1, alpha))
+  );
+}
+
+function expAlpha(dtS, tauS){
+  if (!Number.isFinite(dtS) || dtS <= 0) return 1;
+  if (!Number.isFinite(tauS) || tauS <= 0) return 1;
+
+  return 1 - Math.exp(-dtS / tauS);
+}
+
+function markerBearingTau(speed){
+  const v = Math.max(0, speed || 0);
+
+  if (v < 3){
+    return BEARING_MARKER_TAU_WALK_S;
+  }
+
+  if (v < 8){
+    return BEARING_MARKER_TAU_MID_S;
+  }
+
+  return BEARING_MARKER_TAU_FAST_S;
+}
+
+function cameraBearingTau(speed){
+  const v = Math.max(0, speed || 0);
+
+  if (v < 3){
+    return BEARING_CAMERA_TAU_WALK_S;
+  }
+
+  if (v < 8){
+    return BEARING_CAMERA_TAU_MID_S;
+  }
+
+  return BEARING_CAMERA_TAU_FAST_S;
+}
+
+function markerBearingDeadband(speed){
+  return (speed || 0) < 3
+    ? BEARING_MARKER_DEADBAND_LOW_DEG
+    : BEARING_MARKER_DEADBAND_HIGH_DEG;
+}
+
+function cameraBearingDeadband(speed){
+  return (speed || 0) < 3
+    ? BEARING_CAMERA_DEADBAND_LOW_DEG
+    : BEARING_CAMERA_DEADBAND_HIGH_DEG;
+}
+
+/* Kies voor GPS-afgeleide koers een referentiefix op voldoende afstand.
+   Bij wandelen is afstand belangrijker dan alleen tijd: enkele seconden
+   kunnen anders slechts 2–4 meter basis geven, wat veel hoekruis oplevert. */
+function derivedBearingFromFixes(ts, lat, lon, acc, speed){
+  if (!fixBuf || fixBuf.length < 2) return null;
+
+  const here = {lat, lon};
+  const v = Math.max(0, speed || 0);
+
+  /* Bij wandelen streven we naar ongeveer 9–22 m meetbasis.
+     Bij hogere snelheid mag de basis korter zijn voor responsie. */
+  let minBaseM;
+
+  if (v < 3){
+    minBaseM = Math.max(
+      BEARING_WALK_BASE_MIN_M,
+      Math.min(
+        BEARING_WALK_BASE_MAX_M,
+        Math.max(0, Number.isFinite(acc) ? acc : 0) * 1.15
+      )
+    );
+  } else {
+    minBaseM = BEARING_VEHICLE_BASE_MIN_M;
+  }
+
+  let best = null;
+
+  /* Zoek van nieuw naar oud de eerste fix die voldoende ruimtelijke
+     basis geeft. Zo blijft de koers relatief actueel. */
+  for (let i = fixBuf.length - 2; i >= 0; i--){
+    const f = fixBuf[i];
+
+    if (ts - f.t < 1200){
+      continue;
+    }
+
+    const moved = hv(f, here);
+
+    if (moved >= minBaseM){
+      best = f;
+      break;
+    }
+  }
+
+  if (!best){
+    return null;
+  }
+
+  return routeBearing(best, here);
+}
+   
 function angleDelta(from, to){ return ((to - from + 540) % 360) - 180; }
 function routeBearing(a, b){
   const lat1 = a.lat*Math.PI/180, lat2 = b.lat*Math.PI/180;
@@ -1283,26 +1527,64 @@ function predictMotion(now){
 function setMotionTarget(target, acc, speed){
   const now = performance.now();
   const mapVisible = document.visibilityState === "visible" && state.presentation === "map";
+    /* Kies één consistente koersbron voor de motion predictor.
+     Tijdens stationary wint de vergrendelde koers.
+     Tijdens beweging prefereren we de nieuwe gefilterde koersmeting;
+     alleen als die ontbreekt vallen we terug op de targetbearing. */
+  const targetBearing = stationary.active
+    ? stationary.lockBearing
+    : (
+        bearingState.measured ??
+        target.bearing ??
+        lastBearing ??
+        motion.bearing
+      );
+
   if (!motion.pos || !mapVisible){
     /* Als de kaart verborgen is (groot getal / achtergrond), bestaat er geen
        visuele overgang om te behouden. Houd de interne positie dan actueel. */
-    motion.pos = { lat:target.lat, lon:target.lon };
-    if (target.bearing != null) motion.bearing = normBearing(target.bearing);
+    motion.pos = {
+      lat:target.lat,
+      lon:target.lon
+    };
+
+    if (targetBearing != null){
+      motion.bearing = normBearing(targetBearing);
+    }
+
   } else {
     const err = hv(motion.pos, target);
-    const hard = Math.max(MOTION_HARD_SNAP_MIN_M,
-      Math.min(MOTION_HARD_SNAP_MAX_M, 3*Math.max(1, acc || 999)));
+
+    const hard = Math.max(
+      MOTION_HARD_SNAP_MIN_M,
+      Math.min(
+        MOTION_HARD_SNAP_MAX_M,
+        3 * Math.max(1, acc || 999)
+      )
+    );
+
     if (err > hard){
-      motion.pos = { lat:target.lat, lon:target.lon };
-      if (target.bearing != null) motion.bearing = normBearing(target.bearing);
+      motion.pos = {
+        lat:target.lat,
+        lon:target.lon
+      };
+
+      if (targetBearing != null){
+        motion.bearing = normBearing(targetBearing);
+      }
     }
   }
 
-  motion.anchor = { lat:target.lat, lon:target.lon };
-  motion.anchorBearing = target.bearing == null
+  motion.anchor = {
+    lat:target.lat,
+    lon:target.lon
+  };
+
+  motion.anchorBearing = targetBearing == null
     ? motion.bearing
-    : normBearing(target.bearing);
-    motion.anchorPerf = now;
+    : normBearing(targetBearing);
+
+  motion.anchorPerf = now;
 
   /* Tijdens stationary lock is visuele extrapolatie expliciet nul.
      De ruwe snelheid elders in de app blijft onaangetast. */
@@ -1346,13 +1628,65 @@ function drawMotionFrame(now){
     motion.bearing = normBearing(motion.bearing + angleDelta(motion.bearing, desired.bearing)*aBear);
   }
 
-   /* Marker blijft op de volledige motion-frequentie bewegen. */
-  marker.setLngLat([motion.pos.lon, motion.pos.lat]);
-  marker.setRotation(motion.bearing ?? 0);
+    /* Markerpositie blijft op de volledige motion-frequentie bewegen. */
+  marker.setLngLat([
+    motion.pos.lon,
+    motion.pos.lat
+  ]);
 
-  /* Camera volgt apart en minder vaak. Tijdens pinch, drag,
-     knopzoom of een lopende MapLibre-animatie schrijft deze
-     functie bewust helemaal niets naar de camera. */
+  /* Markerkoers krijgt een eigen snelheidsafhankelijk filter.
+     Tijdens stationary lock blijft de eerder vastgezette koers staan. */
+  const markerTargetBearing = stationary.active
+    ? stationary.lockBearing
+    : (
+        bearingState.measured ??
+        motion.bearing ??
+        lastBearing
+      );
+
+  if (markerTargetBearing != null){
+    if (bearingState.marker == null){
+      bearingState.marker = normBearing(markerTargetBearing);
+      bearingState.lastMarkerPerf = now;
+    } else {
+      const dtS = bearingState.lastMarkerPerf
+        ? Math.min(0.25, Math.max(0, (now - bearingState.lastMarkerPerf) / 1000))
+        : 0;
+
+      bearingState.lastMarkerPerf = now;
+
+      const delta = Math.abs(
+        shortestBearingDelta(
+          bearingState.marker,
+          markerTargetBearing
+        )
+      );
+
+      if (
+        stationary.active ||
+        delta >= markerBearingDeadband(dispSpeed)
+      ){
+        const alpha = stationary.active
+          ? 1
+          : expAlpha(
+              dtS,
+              markerBearingTau(dispSpeed)
+            );
+
+        bearingState.marker = bearingLerp(
+          bearingState.marker,
+          markerTargetBearing,
+          alpha
+        );
+      }
+    }
+
+    marker.setRotation(bearingState.marker);
+  } else {
+    marker.setRotation(0);
+  }
+
+  /* Camera volgt apart, rustiger en minder vaak. */
   drawFollowCamera(now);
 
   const err = hv(motion.pos, desired);
@@ -1362,6 +1696,7 @@ function drawMotionFrame(now){
   if (liveSpeed > .15 || err > .12 || bErr > .25 || desired.ageS < 1.2)
     motion.raf = requestAnimationFrame(drawMotionFrame);
 }
+   
 function ensureMotionLoop(){
   if (motion.raf || !motion.anchor || !marker) return;
   if (document.visibilityState !== "visible" || state.presentation !== "map") return;
@@ -1449,9 +1784,16 @@ function resumeFollow(){
       return {lat:q.lat, lon:q.lng};
     })();
 
+        const resumeBearing =
+      bearingState.camera ??
+      bearingState.marker ??
+      motion.bearing ??
+      lastBearing ??
+      map.getBearing();
+
     map.jumpTo({
       center:[p.lon,p.lat],
-      bearing:motion.bearing ?? lastBearing ?? map.getBearing()
+      bearing:resumeBearing
     });
   }
 
@@ -1534,39 +1876,74 @@ function onFix(pos){
       dispSpeed = 0;
     }
   }
-   /* Bij overtuigende stilstand bevriezen we de koers.
-     Een GPS-heading bij vrijwel nul snelheid is visueel betekenisloos
-     en veroorzaakt anders draaiende marker/horizon. */
-  if (!stationary.active){
+  
+  /* ── koersmeting ─────────────────────────────────────────
+     Stationary lock blijft dominant. Tijdens beweging kiezen we
+     een gemeten koers, maar geven die nog niet rechtstreeks aan
+     marker of camera door. */
+  if (!stationary.active && dispSpeed >= BEARING_MIN_SPEED_MS){
+    let measuredBearing = null;
+
+    /* Native heading is bij hogere snelheid doorgaans bruikbaar.
+       Bij wandelen prefereren we bewust de langere ruimtelijke GPS-basis,
+       omdat instant heading dan vaak nerveus is. */
     if (
+      dispSpeed >= 3 &&
+      c.heading != null &&
+      !isNaN(c.heading)
+    ){
+      measuredBearing = normBearing(c.heading);
+    }
+
+    if (measuredBearing == null){
+      measuredBearing = derivedBearingFromFixes(
+        ts,
+        c.latitude,
+        c.longitude,
+        acc,
+        dispSpeed
+      );
+    }
+
+    /* Als afgeleide koers nog geen voldoende lange basis heeft,
+       mag native heading als fallback dienen. */
+    if (
+      measuredBearing == null &&
       c.heading != null &&
       !isNaN(c.heading) &&
-      dispSpeed > 1.1
+      dispSpeed >= 1.3
     ){
-      lastBearing = normBearing(c.heading);
+      measuredBearing = normBearing(c.heading);
+    }
 
-    } else if (dispSpeed > 1.1 && fixBuf.length > 1){
-      /* Android levert heading niet op ieder toestel/fix. Leid dan koers af uit
-         voldoende verplaatsing, zodat vrij rijden in 3D toch kan extrapoleren. */
-      let ref = null;
+    if (measuredBearing != null){
+      bearingState.measured = measuredBearing;
 
-      for (let i = fixBuf.length - 2; i >= 0; i--){
-        if (ts - fixBuf[i].t >= 1000){
-          ref = fixBuf[i];
-          break;
-        }
-      }
+      /* lastBearing blijft de app-brede, gefilterde koersbron.
+         De daadwerkelijke marker- en camerafilters volgen hieronder
+         in hun eigen renderpaden. */
+      if (lastBearing == null){
+        lastBearing = measuredBearing;
+      } else {
+        const d = Math.abs(
+          shortestBearingDelta(lastBearing, measuredBearing)
+        );
 
-      if (ref){
-        const here = {
-          lat:c.latitude,
-          lon:c.longitude
-        };
+        const deadband = markerBearingDeadband(dispSpeed);
 
-        const moved = hv(ref, here);
+        if (d >= deadband){
+          /* GPS-fixes komen niet exact periodiek. Gebruik daarom
+             een bescheiden per-fix alpha, afhankelijk van snelheid. */
+          const alpha =
+            dispSpeed < 3 ? 0.22 :
+            dispSpeed < 8 ? 0.36 :
+                            0.52;
 
-        if (moved >= Math.max(3, Math.min(acc, 20) * .6)){
-          lastBearing = routeBearing(ref, here);
+          lastBearing = bearingLerp(
+            lastBearing,
+            measuredBearing,
+            alpha
+          );
         }
       }
     }
