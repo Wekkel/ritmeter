@@ -649,10 +649,23 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
     <button id="apSw" class="switch" role="switch"></button>
   </div>
 
-  <div class="row">
+   <div class="row">
     <div class="info"><b id="lblDim"></b><span id="dscDim"></span></div>
     <input type="range" id="dimRange" min="0" max="60" step="5" value="0">
   </div>
+
+  <div class="row">
+    <div class="info">
+      <b id="lblDiag"></b>
+      <span id="dscDiag"></span>
+    </div>
+    <div class="seg">
+      <button id="diagShareBtn"></button>
+      <button id="diagClearBtn"></button>
+    </div>
+  </div>
+
+  <button id="setClose">Sluiten</button>
 
   <button id="setClose">Sluiten</button>
   <p id="appVer" style="text-align:center;color:#7E8B98;font-size:12px;margin:14px 0 0">RitMeter</p>
@@ -719,6 +732,11 @@ const I18N = {
     mirror:"Spiegelen", mirror_d:"Spiegelt het grote snelheidsgetal (reflectie in de voorruit)",
     apause:"Auto-pauze", apause_d:"Tijd pauzeert na 5 s stilstand",
     dim:"Nachtdimmer", dim_d:"Dim de weergave in het donker",
+    diag:"Diagnose", diag_d:"Deel of wis het begrensde technische log",
+    diag_share:"Deel", diag_clear:"Wis",
+    diag_shared:"Diagnose gedeeld", diag_downloaded:"Diagnosebestand gemaakt",
+    diag_cleared:"Diagnose gewist", diag_clear_q:"Diagnostisch log wissen?",
+    diag_failed:"Delen van diagnose mislukt",
     exit_hint:"tik om terug te keren", close:"Sluiten",
     hist:"Geschiedenis",
     hist_empty:"Nog geen opgeslagen ritten. Een rit wordt bewaard zodra je na het stoppen op \u201COpslaan & reset\u201D tikt.",
@@ -761,6 +779,11 @@ const I18N = {
     mirror:"Mirror", mirror_d:"Mirrors the large speed value (windshield reflection)",
     apause:"Auto-pause", apause_d:"Time pauses after 5 s standstill",
     dim:"Night dimmer", dim_d:"Dim the display in the dark",
+    diag:"Diagnostics", diag_d:"Share or clear the bounded technical log",
+    diag_share:"Share", diag_clear:"Clear",
+    diag_shared:"Diagnostics shared", diag_downloaded:"Diagnostic file created",
+    diag_cleared:"Diagnostics cleared", diag_clear_q:"Clear diagnostic log?",
+    diag_failed:"Could not share diagnostics",
     exit_hint:"tap to return", close:"Close",
     hist:"History",
     hist_empty:"No saved trips yet. A trip is stored when you tap \u201CSave & reset\u201D after stopping.",
@@ -846,12 +869,17 @@ function toast(msg){
    Geen invloed op tripdata, route logging of persistence. */
 const DIAG_MAX_EVENTS = 240;
 const DIAG_GPS_SAMPLE_MS = 5000;
+const DIAG_PERSIST_MS = 5000;
+const DIAG_STORAGE_KEY = "rm_diag_v1";
 
 const diagState = {
   events:[],
   seq:0,
   lastGpsSampleAt:0,
-  transitions:Object.create(null)
+  transitions:Object.create(null),
+  persistTimer:0,
+  persistDirty:false,
+  restored:false
 };
 
 function diagSafeValue(value){
@@ -902,12 +930,141 @@ function diagSafeValue(value){
   return String(value);
 }
 
+function diagIsCriticalType(type){
+  return (
+    type === "js.error" ||
+    type === "promise.unhandled" ||
+    type === "gps.error" ||
+    type === "gps.unsupported" ||
+    type === "state.stale" ||
+    type === "state.stationary" ||
+    type === "state.visibility"
+  );
+}
+
+function diagPersistNow(){
+  if (diagState.persistTimer){
+    clearTimeout(diagState.persistTimer);
+    diagState.persistTimer = 0;
+  }
+
+  if (!diagState.persistDirty){
+    return true;
+  }
+
+  try{
+    const payload = {
+      version:1,
+      savedAt:new Date().toISOString(),
+      seq:diagState.seq,
+      events:diagState.events.slice(-DIAG_MAX_EVENTS)
+    };
+
+    LS.setItem(
+      DIAG_STORAGE_KEY,
+      JSON.stringify(payload)
+    );
+
+    diagState.persistDirty = false;
+    return true;
+  } catch(e){
+    /* Diagnose-opslag mag de app nooit verstoren. */
+    return false;
+  }
+}
+
+function diagSchedulePersist(immediate=false){
+  diagState.persistDirty = true;
+
+  if (immediate){
+    diagPersistNow();
+    return;
+  }
+
+  if (diagState.persistTimer){
+    return;
+  }
+
+  diagState.persistTimer = setTimeout(() => {
+    diagState.persistTimer = 0;
+    diagPersistNow();
+  }, DIAG_PERSIST_MS);
+}
+
+function diagRestore(){
+  let parsed;
+
+  try{
+    const raw = LS.getItem(DIAG_STORAGE_KEY);
+    if (!raw) return 0;
+
+    parsed = JSON.parse(raw);
+  } catch(e){
+    try{
+      LS.removeItem(DIAG_STORAGE_KEY);
+    } catch(ignore){}
+    return 0;
+  }
+
+  if (
+    !parsed ||
+    !Array.isArray(parsed.events)
+  ){
+    return 0;
+  }
+
+  const restored = parsed.events
+    .slice(-DIAG_MAX_EVENTS)
+    .filter(event =>
+      event &&
+      typeof event === "object" &&
+      typeof event.type === "string"
+    )
+    .map(event => diagSafeValue(event));
+
+  diagState.events = restored;
+
+  const maxSeq = restored.reduce(
+    (max, event) => {
+      const seq = Number(event.seq);
+      return Number.isFinite(seq)
+        ? Math.max(max, seq)
+        : max;
+    },
+    0
+  );
+
+  diagState.seq = Math.max(
+    Number(parsed.seq) || 0,
+    maxSeq
+  );
+
+  diagState.restored = restored.length > 0;
+
+  return restored.length;
+}
+
+function diagRemovePersisted(){
+  if (diagState.persistTimer){
+    clearTimeout(diagState.persistTimer);
+    diagState.persistTimer = 0;
+  }
+
+  diagState.persistDirty = false;
+
+  try{
+    LS.removeItem(DIAG_STORAGE_KEY);
+  } catch(e){}
+}
+
 function diagAdd(type, data=null){
+  const eventType = String(type);
+
   const event = {
     seq:++diagState.seq,
     at:new Date().toISOString(),
     perf:+performance.now().toFixed(1),
-    type:String(type)
+    type:eventType
   };
 
   if (data != null){
@@ -922,6 +1079,10 @@ function diagAdd(type, data=null){
       diagState.events.length - DIAG_MAX_EVENTS
     );
   }
+
+  diagSchedulePersist(
+    diagIsCriticalType(eventType)
+  );
 
   return event;
 }
@@ -966,10 +1127,10 @@ function diagGpsFix(c, ts, acc){
   diagAdd("gps.fix", {
     ts,
     lat:Number.isFinite(c.latitude)
-      ? +c.latitude.toFixed(6)
+      ? +c.latitude.toFixed(5)
       : null,
     lon:Number.isFinite(c.longitude)
-      ? +c.longitude.toFixed(6)
+      ? +c.longitude.toFixed(5)
       : null,
     acc:Number.isFinite(acc)
       ? +acc.toFixed(1)
@@ -1049,6 +1210,152 @@ function diagSnapshot(){
   };
 }
 
+function diagFileStamp(date=new Date()){
+  return date
+    .toISOString()
+    .replace(/[:.]/g, "-");
+}
+
+function diagExportObject(){
+  return {
+    format:"RitMeter diagnostics",
+    version:1,
+    exportedAt:new Date().toISOString(),
+    appVersion:$("appVer")
+      ? $("appVer").textContent
+      : "RitMeter",
+    userAgent:navigator.userAgent || null,
+    snapshot:diagSnapshot(),
+    recoveredFromPreviousSession:diagState.restored,
+    maxEvents:DIAG_MAX_EVENTS,
+    eventCount:diagState.events.length,
+    events:diagState.events.slice(-DIAG_MAX_EVENTS)
+  };
+}
+
+function diagExportText(){
+  return JSON.stringify(
+    diagExportObject(),
+    null,
+    2
+  );
+}
+
+function diagExportFile(){
+  const filename =
+    `RitMeter-diagnose-${diagFileStamp()}.json`;
+
+  const file = new File(
+    [diagExportText()],
+    filename,
+    {
+      type:"application/json"
+    }
+  );
+
+  return {
+    file,
+    filename
+  };
+}
+
+function diagDownload(){
+  const text = diagExportText();
+
+  const blob = new Blob(
+    [text],
+    {
+      type:"application/json"
+    }
+  );
+
+  const filename =
+    `RitMeter-diagnose-${diagFileStamp()}.json`;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+
+  return filename;
+}
+
+async function diagShare(){
+  /* Neem ook de laatste nog niet geflushte RAM-events mee
+     en zet vooraf een recovery-copy veilig. */
+  diagPersistNow();
+
+  const { file, filename } = diagExportFile();
+
+  const shareData = {
+    title:"RitMeter diagnose",
+    text:"RitMeter diagnostisch logbestand",
+    files:[file]
+  };
+
+  try{
+    if (
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare(shareData)
+    ){
+      await navigator.share(shareData);
+
+      diagAdd("diag.shared", {
+        method:"native-file",
+        filename
+      });
+
+      return {
+        method:"shared",
+        filename
+      };
+    }
+  } catch(e){
+    if (
+      e &&
+      e.name === "AbortError"
+    ){
+      return {
+        method:"cancelled",
+        filename
+      };
+    }
+
+    diagAdd("diag.share_error", {
+      name:e && e.name
+        ? String(e.name)
+        : null,
+      message:e && e.message
+        ? String(e.message)
+        : null
+    });
+  }
+
+  const downloaded = diagDownload();
+
+  diagAdd("diag.shared", {
+    method:"download",
+    filename:downloaded
+  });
+
+  return {
+    method:"download",
+    filename:downloaded
+  };
+}
+   
 function diagPollTransitions(){
   diagTransition(
     "visibility",
@@ -1144,19 +1451,34 @@ const RitMeterDiag = Object.freeze({
     return diagSnapshot();
   },
 
+  export(){
+    return diagExportObject();
+  },
+
+  persist(){
+    return diagPersistNow();
+  },
+
+  async share(){
+    return diagShare();
+  },
+
+  download(){
+    return diagDownload();
+  },
+
   clear(){
     diagState.events.length = 0;
     diagState.seq = 0;
     diagState.lastGpsSampleAt = 0;
     diagState.transitions = Object.create(null);
+    diagState.restored = false;
+
+    diagRemovePersisted();
   },
 
   async copy(){
-    const text = JSON.stringify({
-      exportedAt:new Date().toISOString(),
-      snapshot:diagSnapshot(),
-      events:diagState.events
-    }, null, 2);
+    const text = diagExportText();
 
     if (
       navigator.clipboard &&
@@ -1172,12 +1494,31 @@ const RitMeterDiag = Object.freeze({
 
 window.RitMeterDiag = RitMeterDiag;
 
+const diagRestoredCount = diagRestore();
+
 diagAdd("app.diag_ready", {
   maxEvents:DIAG_MAX_EVENTS,
-  gpsSampleMs:DIAG_GPS_SAMPLE_MS
+  gpsSampleMs:DIAG_GPS_SAMPLE_MS,
+  persistMs:DIAG_PERSIST_MS,
+  restoredEvents:diagRestoredCount
 });
 
 setInterval(diagPollTransitions, 1000);
+
+document.addEventListener("visibilitychange", () => {
+  diagTransition(
+    "visibility",
+    document.visibilityState
+  );
+
+  if (document.visibilityState === "hidden"){
+    diagPersistNow();
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  diagPersistNow();
+});
 
 /* ── IndexedDB ───────────────────────────────────────────── */
 let dbP = null;
@@ -2857,6 +3198,9 @@ function applyLang(){
   $("lblMirror").textContent = t("mirror");     $("dscMirror").textContent = t("mirror_d");
   $("lblAP").textContent = t("apause");         $("dscAP").textContent = t("apause_d");
   $("lblDim").textContent = t("dim");           $("dscDim").textContent = t("dim_d");
+  $("lblDiag").textContent = t("diag");         $("dscDiag").textContent = t("diag_d");
+  $("diagShareBtn").textContent = t("diag_share");
+  $("diagClearBtn").textContent = t("diag_clear");
   $("setClose").textContent = t("close");       $("ntcBtn").textContent = t("retry");
   $("unitKm").textContent = I18N[lang].unit_kmh;
   $("histTitle").textContent = t("hist");
@@ -2901,6 +3245,46 @@ function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh
 $("setBtn").onclick   = () => { state.overlay = "settings"; render(); };
 $("setClose").onclick = () => { state.overlay = "none"; render(); };
 $("settings").onclick = e => { if (e.target === $("settings")){ state.overlay = "none"; render(); } };
+
+$("diagShareBtn").onclick = async () => {
+  const btn = $("diagShareBtn");
+  const oldDisabled = btn.disabled;
+
+  btn.disabled = true;
+
+  try{
+    const result = await diagShare();
+
+    if (result.method === "shared"){
+      toast(t("diag_shared"));
+    } else if (result.method === "download"){
+      toast(t("diag_downloaded"));
+    }
+  } catch(e){
+    diagAdd("diag.share_error", {
+      name:e && e.name
+        ? String(e.name)
+        : null,
+      message:e && e.message
+        ? String(e.message)
+        : null
+    });
+
+    toast(t("diag_failed"));
+  } finally {
+    btn.disabled = oldDisabled;
+  }
+};
+
+$("diagClearBtn").onclick = () => {
+  if (!confirm(t("diag_clear_q"))){
+    return;
+  }
+
+  RitMeterDiag.clear();
+  toast(t("diag_cleared"));
+};
+
 $("langNL").onclick = () => { lang = "nl"; LS.setItem("rm_lang", lang); applyLang(); };
 $("langEN").onclick = () => { lang = "en"; LS.setItem("rm_lang", lang); applyLang(); };
 $("compassSw").onclick = () => { showCompass = !showCompass; LS.setItem("rm_compass", showCompass?"1":"0"); syncSettingsUI(); render(); };
