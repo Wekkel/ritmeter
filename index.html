@@ -1022,15 +1022,51 @@ const BEARING_CAMERA_TAU_FAST_S = 0.72;
    
 const MOTION_HARD_SNAP_MIN_M = 40;
 const MOTION_HARD_SNAP_MAX_M = 120;
-const MOTION_STALE_HOLD_S = 10;       // tunnel: laatste snelheid eerst vasthouden
-const MOTION_STALE_DECAY_S = 8;       // daarna geleidelijk uitrollen
+/* ── stale GPS / dead reckoning ─────────────────────────────
+   Vrij rijden is conservatiever dan actieve navigatie.
+   Tijd én afstand worden begrensd, zodat een oude snelheid niet
+   tientallen of honderden meters fictief blijft doorlopen. */
+
+const GPS_STALE_AFTER_MS = 3200;
+
+/* Vrij rijden */
+const DR_FREE_HOLD_S = 2.5;
+const DR_FREE_DECAY_S = 3.5;
+const DR_FREE_MAX_AGE_S = 8;
+const DR_FREE_MAX_DIST_M = 28;
+
+/* Actieve route */
+const DR_ROUTE_HOLD_S = 4.5;
+const DR_ROUTE_DECAY_S = 6;
+const DR_ROUTE_MAX_AGE_S = 14;
+const DR_ROUTE_MAX_DIST_M = 120;
+
+/* Na zeer lange fixuitval stopt visuele voorspelling volledig. */
+const DR_ABSOLUTE_MAX_AGE_S = 18;
 
 const motion = {
-  pos:null, bearing:null,
-  anchor:null, anchorBearing:null, anchorPerf:0,
-  speed:0, acc:999,
-  routeAlong:null, routeMode:false,
-  raf:0, lastDraw:0
+  pos:null,
+  bearing:null,
+
+  anchor:null,
+  anchorBearing:null,
+  anchorPerf:0,
+
+  speed:0,
+  acc:999,
+
+  routeAlong:null,
+  routeMode:false,
+
+  /* Laatste echte GPS-gebaseerde motion update. */
+  lastFixPerf:0,
+
+  /* Bewaakt één stale episode. */
+  staleActive:false,
+  staleStartPerf:0,
+
+  raf:0,
+  lastDraw:0
 };
 
 /* Visuele stilstandstoestand.
@@ -1493,39 +1529,245 @@ function moveGeo(p, bearing, distM){
                                 Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
   return { lat:lat2*180/Math.PI, lon:((lon2*180/Math.PI+540)%360)-180 };
 }
-function staleTravel(ageS, speed){
-  const v = Math.max(0, speed || 0);
-  if (ageS <= MOTION_STALE_HOLD_S) return v * ageS;
-  const extra = ageS - MOTION_STALE_HOLD_S;
-  return v*MOTION_STALE_HOLD_S + v*MOTION_STALE_DECAY_S*(1-Math.exp(-extra/MOTION_STALE_DECAY_S));
+function deadReckoningLimits(routeMode){
+  return routeMode
+    ? {
+        holdS:DR_ROUTE_HOLD_S,
+        decayS:DR_ROUTE_DECAY_S,
+        maxAgeS:DR_ROUTE_MAX_AGE_S,
+        maxDistM:DR_ROUTE_MAX_DIST_M
+      }
+    : {
+        holdS:DR_FREE_HOLD_S,
+        decayS:DR_FREE_DECAY_S,
+        maxAgeS:DR_FREE_MAX_AGE_S,
+        maxDistM:DR_FREE_MAX_DIST_M
+      };
 }
-function staleSpeed(ageS, speed){
-  const v = Math.max(0, speed || 0);
-  return ageS <= MOTION_STALE_HOLD_S ? v
-    : v*Math.exp(-(ageS-MOTION_STALE_HOLD_S)/MOTION_STALE_DECAY_S);
+
+function staleSpeed(ageS, baseSpeed, routeMode = motion.routeMode){
+  const speed = Math.max(0, baseSpeed || 0);
+  const limits = deadReckoningLimits(routeMode);
+
+  if (ageS <= 0){
+    return speed;
+  }
+
+  if (
+    ageS >= limits.maxAgeS ||
+    ageS >= DR_ABSOLUTE_MAX_AGE_S
+  ){
+    return 0;
+  }
+
+  if (ageS <= limits.holdS){
+    return speed;
+  }
+
+  const decayAge = ageS - limits.holdS;
+
+  return speed * Math.exp(
+    -decayAge / limits.decayS
+  );
 }
+
+function deadReckoningTravel(ageS, baseSpeed, routeMode = motion.routeMode){
+  const speed = Math.max(0, baseSpeed || 0);
+  const limits = deadReckoningLimits(routeMode);
+
+  const cappedAgeS = Math.max(
+    0,
+    Math.min(
+      ageS,
+      limits.maxAgeS,
+      DR_ABSOLUTE_MAX_AGE_S
+    )
+  );
+
+  let distM;
+
+  if (cappedAgeS <= limits.holdS){
+    distM = speed * cappedAgeS;
+  } else {
+    const decayAge = cappedAgeS - limits.holdS;
+
+    distM =
+      speed * limits.holdS +
+      speed * limits.decayS *
+        (1 - Math.exp(-decayAge / limits.decayS));
+  }
+
+  return Math.min(
+    limits.maxDistM,
+    Math.max(0, distM)
+  );
+}
+
+function beginStaleEpisode(now){
+  if (motion.staleActive) return;
+
+  motion.staleActive = true;
+  motion.staleStartPerf = motion.lastFixPerf
+    ? Math.min(
+        now,
+        motion.lastFixPerf + GPS_STALE_AFTER_MS
+      )
+    : now;
+}
+
+function clearStaleEpisode(){
+  motion.staleActive = false;
+  motion.staleStartPerf = 0;
+}
+
+function invalidateRouteDeadReckoning(){
+  const wasRouteMode = motion.routeMode;
+
+  motion.routeMode = false;
+  motion.routeAlong = null;
+
+  if (
+    !wasRouteMode ||
+    !motion.staleActive ||
+    !motion.pos
+  ){
+    return;
+  }
+
+  /* Een routewissel of nav-stop tijdens stale GPS mag de marker
+     niet terugtrekken naar een oude vrije anchor. Bevries daarom
+     op de actuele visuele positie tot een nieuwe echte GPS-fix komt. */
+  motion.anchor = {
+    lat:motion.pos.lat,
+    lon:motion.pos.lon
+  };
+  motion.anchorBearing = motion.bearing;
+  motion.anchorPerf = performance.now();
+  motion.speed = 0;
+}
+   
 function blendGeo(cur, target, a){
   const dLon = ((target.lon-cur.lon+540)%360)-180;
   cur.lat += (target.lat-cur.lat)*a;
   cur.lon = ((cur.lon + dLon*a + 540)%360)-180;
 }
 function predictMotion(now){
-  if (!motion.anchor) return null;
-  const ageS = Math.max(0, (now-motion.anchorPerf)/1000);
-  const travel = staleTravel(ageS, motion.speed);
-
-  /* Bij een betrouwbare route-snap loopt de voorspelling door langs de routelijn.
-     In een tunnel volgt de kaart daardoor ook bochten in de actieve route. */
-  if (motion.routeMode && motion.routeAlong != null){
-    const rp = pointAtRouteAlong(motion.routeAlong + travel);
-    if (rp) return { lat:rp.lat, lon:rp.lon, bearing:rp.bearing, ageS };
+  if (!motion.anchor){
+    return null;
   }
 
-  const p = moveGeo(motion.anchor, motion.anchorBearing, travel);
-  return { ...p, bearing:motion.anchorBearing, ageS };
+  const ageS = Math.max(
+    0,
+    (now - motion.anchorPerf) / 1000
+  );
+
+  /* Na enkele seconden zonder echte fix begint een stale episode.
+     De starttijd wordt teruggelegd op het echte stale-moment, zodat
+     achtergrond/big-mode geen nieuwe volledige extrapolatieperiode krijgt. */
+  if (
+    motion.lastFixPerf &&
+    now - motion.lastFixPerf >= GPS_STALE_AFTER_MS
+  ){
+    beginStaleEpisode(now);
+  }
+
+  const staleAgeS = motion.staleActive
+    ? Math.max(
+        0,
+        (now - motion.staleStartPerf) / 1000
+      )
+    : 0;
+
+  const routeMode =
+    motion.routeMode &&
+    motion.routeAlong != null &&
+    nav.coords &&
+    nav.coords.length > 1;
+
+  const baseSpeed = Math.max(
+    0,
+    motion.speed || 0
+  );
+
+  const liveSpeed = motion.staleActive
+    ? staleSpeed(
+        staleAgeS,
+        baseSpeed,
+        routeMode
+      )
+    : baseSpeed;
+
+  /* Afstand wordt geïntegreerd, niet berekend als actuele snelheid × totale tijd.
+     Daardoor kan de voorspelde positie tijdens speed-decay nooit teruglopen. */
+  const travelM = motion.staleActive
+    ? (
+        baseSpeed * Math.min(
+          ageS,
+          GPS_STALE_AFTER_MS / 1000
+        ) +
+        deadReckoningTravel(
+          staleAgeS,
+          baseSpeed,
+          routeMode
+        )
+      )
+    : baseSpeed * ageS;
+
+  let predicted;
+
+  /* ── route-aware extrapolatie ─────────────────────────── */
+  if (routeMode){
+    const along = Math.max(
+      0,
+      motion.routeAlong + travelM
+    );
+
+    const rp = pointAtRouteAlong(along);
+
+    if (rp){
+      predicted = {
+        lat:rp.lat,
+        lon:rp.lon,
+        bearing:
+          rp.bearing ??
+          motion.anchorBearing ??
+          motion.bearing,
+        ageS,
+        liveSpeed,
+        routeAlong:rp.along
+      };
+    }
+  }
+
+  /* ── vrije extrapolatie ───────────────────────────────── */
+  if (!predicted){
+    const p = moveGeo(
+      motion.anchor,
+      motion.anchorBearing ?? motion.bearing,
+      travelM
+    );
+
+    predicted = {
+      lat:p.lat,
+      lon:p.lon,
+      bearing:
+        motion.anchorBearing ??
+        motion.bearing,
+      ageS,
+      liveSpeed,
+      routeAlong:null
+    };
+  }
+
+  return predicted;
 }
+   
 function setMotionTarget(target, acc, speed){
   const now = performance.now();
+     /* Elke call naar setMotionTarget komt uit een nieuwe GPS-fix.
+     Daarmee eindigt een eventuele stale/dead-reckoning episode. */
+  clearStaleEpisode();
+  motion.lastFixPerf = now;
   const mapVisible = document.visibilityState === "visible" && state.presentation === "map";
     /* Kies één consistente koersbron voor de motion predictor.
      Tijdens stationary wint de vergrendelde koers.
@@ -1628,7 +1870,7 @@ function drawMotionFrame(now){
     motion.bearing = normBearing(motion.bearing + angleDelta(motion.bearing, desired.bearing)*aBear);
   }
 
-    /* Markerpositie blijft op de volledige motion-frequentie bewegen. */
+  /* Markerpositie blijft op de volledige motion-frequentie bewegen. */
   marker.setLngLat([
     motion.pos.lon,
     motion.pos.lat
@@ -1638,11 +1880,17 @@ function drawMotionFrame(now){
      Tijdens stationary lock blijft de eerder vastgezette koers staan. */
   const markerTargetBearing = stationary.active
     ? stationary.lockBearing
-    : (
-        bearingState.measured ??
-        motion.bearing ??
-        lastBearing
-      );
+    : motion.staleActive
+      ? (
+          motion.bearing ??
+          bearingState.measured ??
+          lastBearing
+        )
+      : (
+          bearingState.measured ??
+          motion.bearing ??
+          lastBearing
+        );
 
   if (markerTargetBearing != null){
     if (bearingState.marker == null){
@@ -1692,7 +1940,7 @@ function drawMotionFrame(now){
   const err = hv(motion.pos, desired);
   const bErr = desired.bearing == null || motion.bearing == null ? 0
     : Math.abs(angleDelta(motion.bearing, desired.bearing));
-  const liveSpeed = staleSpeed(desired.ageS, motion.speed);
+  const liveSpeed = Math.max(0, desired.liveSpeed || 0);
   if (liveSpeed > .15 || err > .12 || bErr > .25 || desired.ageS < 1.2)
     motion.raf = requestAnimationFrame(drawMotionFrame);
 }
@@ -2414,6 +2662,12 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible"){
     applyKeepAwake();
     ensureMotionLoop();
+  } else {
+    if (motion.raf){
+      cancelAnimationFrame(motion.raf);
+      motion.raf = 0;
+    }
+    motion.lastDraw = 0;
   }
 });
 /* ── rotatie vergrendelen op portret ─────────────────────── */
@@ -2665,8 +2919,7 @@ async function fetchRoute(o, d, mode){
 function applyRoute(r){
   /* Een nieuwe route maakt een eventuele oude route-dead-reckoning ongeldig.
      Vanaf de eerstvolgende GPS-fix wordt opnieuw geprojecteerd en gesnapt. */
-  motion.routeMode = false;
-  motion.routeAlong = null;
+  invalidateRouteDeadReckoning();
   nav.coords = r.coords;
   nav.cum = [0];
   for (let i = 1; i < r.coords.length; i++) nav.cum[i] = nav.cum[i-1] + hv(r.coords[i-1], r.coords[i]);
@@ -2832,8 +3085,7 @@ function navStartGuidance(){
   if (map) setTimeout(() => map.resize(), 60);
 }
 function navStop(){
-  motion.routeMode = false;
-  motion.routeAlong = null;
+  invalidateRouteDeadReckoning();
   nav.coords = []; nav.cum = []; nav.dest = null;
   nav.remM = 0; nav.remEtaS = 0; nav.lastNear = null;
   nav.offSince = null; nav.rerouting = false;
