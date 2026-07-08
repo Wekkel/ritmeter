@@ -955,6 +955,16 @@ let map, marker;
    Alleen marker + camera gebruiken deze voorspellende weergavelaag. */
 const MOTION_FPS = 30;
 const MOTION_FRAME_MS = 1000 / MOTION_FPS;
+
+/* Marker en kaartcamera hebben bewust een verschillend tempo.
+   De marker blijft vloeiend op maximaal 30 fps bewegen.
+   De camera volgt rustiger op maximaal 15 fps en wordt volledig
+   geblokkeerd tijdens gebruikersinteractie en knop-zoom. */
+const CAMERA_FPS = 15;
+const CAMERA_FRAME_MS = 1000 / CAMERA_FPS;
+const CAMERA_GESTURE_GRACE_MS = 220;
+const CAMERA_BUTTON_ZOOM_BLOCK_MS = 420;
+
 const MOTION_HARD_SNAP_MIN_M = 40;
 const MOTION_HARD_SNAP_MAX_M = 120;
 const MOTION_STALE_HOLD_S = 10;       // tunnel: laatste snelheid eerst vasthouden
@@ -967,6 +977,79 @@ const motion = {
   routeAlong:null, routeMode:false,
   raf:0, lastDraw:0
 };
+
+/* Camera-control staat los van de marker-smoothing.
+   Daardoor kan de driehoek blijven bewegen terwijl MapLibre
+   tijdelijk volledige controle krijgt over pinch, drag of zoom. */
+const cameraControl = {
+  interactionActive:false,
+  buttonZoomUntil:0,
+  lastDraw:0,
+  gestureEndTimer:0,
+  buttonZoomTimer:0
+};
+
+function beginCameraInteraction(){
+  clearTimeout(cameraControl.gestureEndTimer);
+  cameraControl.interactionActive = true;
+}
+
+function endCameraInteraction(){
+  clearTimeout(cameraControl.gestureEndTimer);
+
+  /* Korte grace period voorkomt dat de follow-camera al in hetzelfde
+     touch-einde terugschrijft terwijl MapLibre de gesture afrondt. */
+  cameraControl.gestureEndTimer = setTimeout(() => {
+    cameraControl.interactionActive = false;
+    cameraControl.lastDraw = 0;
+    ensureMotionLoop();
+  }, CAMERA_GESTURE_GRACE_MS);
+}
+
+function blockCameraForButtonZoom(){
+  clearTimeout(cameraControl.buttonZoomTimer);
+
+  cameraControl.buttonZoomUntil =
+    performance.now() + CAMERA_BUTTON_ZOOM_BLOCK_MS;
+
+  cameraControl.buttonZoomTimer = setTimeout(() => {
+    cameraControl.buttonZoomUntil = 0;
+    cameraControl.lastDraw = 0;
+    ensureMotionLoop();
+  }, CAMERA_BUTTON_ZOOM_BLOCK_MS + 20);
+}
+
+function cameraWriteBlocked(now){
+  if (!map || !mapReady) return true;
+  if (cameraControl.interactionActive) return true;
+  if (now < cameraControl.buttonZoomUntil) return true;
+
+  /* Extra vangnet: ook programmatic MapLibre-animaties mogen niet
+     door onze follow-camera met jumpTo() worden afgebroken. */
+  if (typeof map.isEasing === "function" && map.isEasing()) return true;
+  if (typeof map.isZooming === "function" && map.isZooming()) return true;
+
+  return false;
+}
+
+function drawFollowCamera(now){
+  if (!mapReady || !map || !following || !motion.pos) return;
+  if (cameraWriteBlocked(now)) return;
+
+  if (
+    cameraControl.lastDraw &&
+    now - cameraControl.lastDraw < CAMERA_FRAME_MS
+  ){
+    return;
+  }
+
+  cameraControl.lastDraw = now;
+
+  map.jumpTo({
+    center:[motion.pos.lon, motion.pos.lat],
+    bearing:motion.bearing ?? map.getBearing()
+  });
+}
 
 const normBearing = deg => ((deg % 360) + 360) % 360;
 function angleDelta(from, to){ return ((to - from + 540) % 360) - 180; }
@@ -1069,12 +1152,14 @@ function drawMotionFrame(now){
     motion.bearing = normBearing(motion.bearing + angleDelta(motion.bearing, desired.bearing)*aBear);
   }
 
+   /* Marker blijft op de volledige motion-frequentie bewegen. */
   marker.setLngLat([motion.pos.lon, motion.pos.lat]);
   marker.setRotation(motion.bearing ?? 0);
-  if (mapReady && following){
-    map.jumpTo({ center:[motion.pos.lon, motion.pos.lat],
-                 bearing:motion.bearing ?? map.getBearing() });
-  }
+
+  /* Camera volgt apart en minder vaak. Tijdens pinch, drag,
+     knopzoom of een lopende MapLibre-animatie schrijft deze
+     functie bewust helemaal niets naar de camera. */
+  drawFollowCamera(now);
 
   const err = hv(motion.pos, desired);
   const bErr = desired.bearing == null || motion.bearing == null ? 0
@@ -1101,10 +1186,40 @@ function initMap(lon, lat){
   const el = document.createElement("div");
   el.className = "me";
   el.innerHTML = `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
-  marker = new maplibregl.Marker({element:el, rotationAlignment:"map"})
+    marker = new maplibregl.Marker({element:el, rotationAlignment:"map"})
             .setLngLat([lon,lat]).addTo(map);
-  map.on("load", () => { mapReady = true; applyMapPadding(); if (nav.coords.length) drawNavRoute(); });
-  map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });
+
+  map.on("load", () => {
+    mapReady = true;
+    applyMapPadding();
+    if (nav.coords.length) drawNavRoute();
+  });
+
+  /* Slepen betekent bewust: gebruiker wil de kaart bekijken.
+     Daarom pauzeren we follow zoals voorheen gedurende 10 s. */
+  map.on("dragstart", e => {
+    if (!e.originalEvent) return;
+    beginCameraInteraction();
+    suspendFollow();
+  });
+
+  map.on("dragend", e => {
+    if (!e.originalEvent) return;
+    endCameraInteraction();
+  });
+
+  /* Pinch-zoom krijgt tijdelijk volledige cameracontrole,
+     maar schakelt position-follow niet 10 seconden uit.
+     Na afloop hervat de bestaande motion-loop automatisch. */
+  map.on("zoomstart", e => {
+    if (!e.originalEvent) return;
+    beginCameraInteraction();
+  });
+
+  map.on("zoomend", e => {
+    if (!e.originalEvent) return;
+    endCameraInteraction();
+  });
 }
 function updateCamera(lon, lat, bearing, acc=999, routeProj=null){
   const snapped = routeProj && routeProj.d <= routeSnapLimit(acc);
@@ -1123,11 +1238,29 @@ function suspendFollow(){
 }
 function resumeFollow(){
   clearTimeout(followTimer);
+
+  /* Een expliciete recenter-actie van de gebruiker beëindigt
+     eventuele oude gesture-/zoomblokkades. */
+  clearTimeout(cameraControl.gestureEndTimer);
+  clearTimeout(cameraControl.buttonZoomTimer);
+  cameraControl.interactionActive = false;
+  cameraControl.buttonZoomUntil = 0;
+  cameraControl.lastDraw = 0;
+
   following = true;
+
   if (marker && mapReady && state.presentation === "map"){
-    const p = motion.pos || (() => { const q=marker.getLngLat(); return {lat:q.lat,lon:q.lng}; })();
-    map.jumpTo({ center:[p.lon,p.lat], bearing:motion.bearing ?? lastBearing ?? map.getBearing() });
+    const p = motion.pos || (() => {
+      const q = marker.getLngLat();
+      return {lat:q.lat, lon:q.lng};
+    })();
+
+    map.jumpTo({
+      center:[p.lon,p.lat],
+      bearing:motion.bearing ?? lastBearing ?? map.getBearing()
+    });
   }
+
   ensureMotionLoop();
   render();
 }
@@ -1554,8 +1687,25 @@ $("delBtn").onclick = async () => {
   await idbDel(detId); closeDetail(); openHist();
 };
 $("r-recenter").onclick = resumeFollow;
-$("zoomIn").onclick  = () => { if (map) map.zoomTo(Math.min(20, map.getZoom() + 1), { duration:300 }); };
-$("zoomOut").onclick = () => { if (map) map.zoomTo(Math.max(4,  map.getZoom() - 1), { duration:300 }); };
+function zoomMapBy(delta){
+  if (!map || !mapReady) return;
+
+  /* Bescherm de volledige 300 ms zoomanimatie plus een kleine marge
+     tegen follow-camera writes vanuit de motion-loop. */
+  blockCameraForButtonZoom();
+
+  const targetZoom = Math.max(
+    4,
+    Math.min(20, map.getZoom() + delta)
+  );
+
+  map.zoomTo(targetZoom, {
+    duration:300
+  });
+}
+
+$("zoomIn").onclick  = () => zoomMapBy(1);
+$("zoomOut").onclick = () => zoomMapBy(-1);
 
 /* ── scherm aanhouden ────────────────────────────────────── */
 /* ── scherm aanhouden ────────────────────────────────────────
