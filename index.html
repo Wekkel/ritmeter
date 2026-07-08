@@ -818,7 +818,12 @@ const trip = Object.assign(
   JSON.parse(LS.getItem("rm_trip") || "{}"),
   { running:false }
 );
-let route = trip.ms > 0 ? JSON.parse(LS.getItem("rm_route") || "[]") : [];
+
+let route = [];
+if (trip.ms > 0) {
+  const parsedRoute = JSON.parse(LS.getItem("rm_route") || "[]");
+  route = Array.isArray(parsedRoute) ? parsedRoute : [];
+}
 function measuring(){
   if (trip.running) return (autoPause && isPaused) ? "paused" : "running";
   return trip.ms ? "paused" : "idle";
@@ -882,7 +887,9 @@ const diagState = {
   restored:false
 };
 
-function diagSafeValue(value){
+function diagSafeValue(value, depth = 0){
+  if (depth > 3) return "[Max Depth]";
+
   if (
     value == null ||
     typeof value === "string" ||
@@ -905,7 +912,7 @@ function diagSafeValue(value){
   if (Array.isArray(value)){
     return value
       .slice(0, 20)
-      .map(diagSafeValue);
+      .map(v => diagSafeValue(v, depth + 1));
   }
 
   if (typeof value === "object"){
@@ -916,7 +923,7 @@ function diagSafeValue(value){
       if (n >= 30) break;
 
       try{
-        out[key] = diagSafeValue(item);
+        out[key] = diagSafeValue(item, depth + 1);
       } catch(e){
         out[key] = "[unavailable]";
       }
@@ -2964,16 +2971,23 @@ function onErr(e){
 }
 
 /* ── klok, auto-pauze & persistentie ─────────────────────── */
+/* ── klok, auto-pauze & persistentie ─────────────────────── */
+let lastTick = Date.now();
 setInterval(() => {
-  if (firstFix && Date.now() - lastFixTime > 4000){
+  const now = Date.now();
+  const delta = now - lastTick;
+  lastTick = now;
+
+  if (firstFix && now - lastFixTime > 4000){
     dispSpeed *= .5; if (dispSpeed < .4) dispSpeed = 0;
   }
-  if (dispSpeed > 1.2) lastMotion = Date.now();   // ~4,3 km/u = in beweging
-   if (dispSpeed < .55){
-    if (zeroSince === null) zeroSince = Date.now();
-    isPaused = autoPause && (Date.now() - zeroSince > 5000);
+  if (dispSpeed > 1.2) lastMotion = now;
+  if (dispSpeed < .55){
+    if (zeroSince === null) zeroSince = now;
+    isPaused = autoPause && (now - zeroSince > 5000);
   } else { zeroSince = null; isPaused = false; }
-  if (trip.running && !(autoPause && isPaused)){ trip.ms += 1000; }
+  
+  if (trip.running && !(autoPause && isPaused)){ trip.ms += delta; }
   if (trip.running || dispSpeed > 0) render();
 }, 1000);
 setInterval(() => {
