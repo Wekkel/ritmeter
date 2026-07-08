@@ -949,6 +949,147 @@ function applyMapPadding(){
 /* ── kaart ───────────────────────────────────────────────── */
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 let map, marker;
+
+/* ── vloeiende visuele positie (30 fps, dead reckoning + foutuitmiddeling) ──
+   De ruwe GPS-fix blijft leidend voor ritafstand, logging en off-route-detectie.
+   Alleen marker + camera gebruiken deze voorspellende weergavelaag. */
+const MOTION_FPS = 30;
+const MOTION_FRAME_MS = 1000 / MOTION_FPS;
+const MOTION_HARD_SNAP_MIN_M = 40;
+const MOTION_HARD_SNAP_MAX_M = 120;
+const MOTION_STALE_HOLD_S = 10;       // tunnel: laatste snelheid eerst vasthouden
+const MOTION_STALE_DECAY_S = 8;       // daarna geleidelijk uitrollen
+
+const motion = {
+  pos:null, bearing:null,
+  anchor:null, anchorBearing:null, anchorPerf:0,
+  speed:0, acc:999,
+  routeAlong:null, routeMode:false,
+  raf:0, lastDraw:0
+};
+
+const normBearing = deg => ((deg % 360) + 360) % 360;
+function angleDelta(from, to){ return ((to - from + 540) % 360) - 180; }
+function routeBearing(a, b){
+  const lat1 = a.lat*Math.PI/180, lat2 = b.lat*Math.PI/180;
+  const dLon = (b.lon-a.lon)*Math.PI/180;
+  const y = Math.sin(dLon)*Math.cos(lat2);
+  const x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+  return normBearing(Math.atan2(y,x)*180/Math.PI);
+}
+function moveGeo(p, bearing, distM){
+  if (!(distM > 0) || bearing == null) return { lat:p.lat, lon:p.lon };
+  const br = bearing*Math.PI/180, d = distM/R;
+  const lat1 = p.lat*Math.PI/180, lon1 = p.lon*Math.PI/180;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lon2 = lon1 + Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),
+                                Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat:lat2*180/Math.PI, lon:((lon2*180/Math.PI+540)%360)-180 };
+}
+function staleTravel(ageS, speed){
+  const v = Math.max(0, speed || 0);
+  if (ageS <= MOTION_STALE_HOLD_S) return v * ageS;
+  const extra = ageS - MOTION_STALE_HOLD_S;
+  return v*MOTION_STALE_HOLD_S + v*MOTION_STALE_DECAY_S*(1-Math.exp(-extra/MOTION_STALE_DECAY_S));
+}
+function staleSpeed(ageS, speed){
+  const v = Math.max(0, speed || 0);
+  return ageS <= MOTION_STALE_HOLD_S ? v
+    : v*Math.exp(-(ageS-MOTION_STALE_HOLD_S)/MOTION_STALE_DECAY_S);
+}
+function blendGeo(cur, target, a){
+  const dLon = ((target.lon-cur.lon+540)%360)-180;
+  cur.lat += (target.lat-cur.lat)*a;
+  cur.lon = ((cur.lon + dLon*a + 540)%360)-180;
+}
+function predictMotion(now){
+  if (!motion.anchor) return null;
+  const ageS = Math.max(0, (now-motion.anchorPerf)/1000);
+  const travel = staleTravel(ageS, motion.speed);
+
+  /* Bij een betrouwbare route-snap loopt de voorspelling door langs de routelijn.
+     In een tunnel volgt de kaart daardoor ook bochten in de actieve route. */
+  if (motion.routeMode && motion.routeAlong != null){
+    const rp = pointAtRouteAlong(motion.routeAlong + travel);
+    if (rp) return { lat:rp.lat, lon:rp.lon, bearing:rp.bearing, ageS };
+  }
+
+  const p = moveGeo(motion.anchor, motion.anchorBearing, travel);
+  return { ...p, bearing:motion.anchorBearing, ageS };
+}
+function setMotionTarget(target, acc, speed){
+  const now = performance.now();
+  const mapVisible = document.visibilityState === "visible" && state.presentation === "map";
+  if (!motion.pos || !mapVisible){
+    /* Als de kaart verborgen is (groot getal / achtergrond), bestaat er geen
+       visuele overgang om te behouden. Houd de interne positie dan actueel. */
+    motion.pos = { lat:target.lat, lon:target.lon };
+    if (target.bearing != null) motion.bearing = normBearing(target.bearing);
+  } else {
+    const err = hv(motion.pos, target);
+    const hard = Math.max(MOTION_HARD_SNAP_MIN_M,
+      Math.min(MOTION_HARD_SNAP_MAX_M, 3*Math.max(1, acc || 999)));
+    if (err > hard){
+      motion.pos = { lat:target.lat, lon:target.lon };
+      if (target.bearing != null) motion.bearing = normBearing(target.bearing);
+    }
+  }
+
+  motion.anchor = { lat:target.lat, lon:target.lon };
+  motion.anchorBearing = target.bearing == null
+    ? motion.bearing
+    : normBearing(target.bearing);
+  motion.anchorPerf = now;
+  motion.speed = Math.max(0, speed || 0);
+  motion.acc = acc || 999;
+  motion.routeAlong = target.routeAlong == null ? null : target.routeAlong;
+  motion.routeMode = target.routeAlong != null;
+  ensureMotionLoop();
+}
+function drawMotionFrame(now){
+  motion.raf = 0;
+  if (document.visibilityState !== "visible" || state.presentation !== "map" || !marker) return;
+  if (motion.lastDraw && now-motion.lastDraw < MOTION_FRAME_MS){
+    motion.raf = requestAnimationFrame(drawMotionFrame);
+    return;
+  }
+  const dt = motion.lastDraw ? Math.min(.12, (now-motion.lastDraw)/1000) : 1/MOTION_FPS;
+  motion.lastDraw = now;
+  const desired = predictMotion(now);
+  if (!desired || !motion.pos) return;
+
+  /* Exponentiële foutcorrectie: nauwkeurige fixes trekken sneller bij dan grove fixes. */
+  const tau = motion.acc <= 8 ? .34 : motion.acc <= 20 ? .52 : .75;
+  const aPos = 1-Math.exp(-dt/tau);
+  blendGeo(motion.pos, desired, aPos);
+
+  if (desired.bearing != null){
+    if (motion.bearing == null) motion.bearing = normBearing(desired.bearing);
+    const aBear = 1-Math.exp(-dt/.38);
+    motion.bearing = normBearing(motion.bearing + angleDelta(motion.bearing, desired.bearing)*aBear);
+  }
+
+  marker.setLngLat([motion.pos.lon, motion.pos.lat]);
+  marker.setRotation(motion.bearing ?? 0);
+  if (mapReady && following){
+    map.jumpTo({ center:[motion.pos.lon, motion.pos.lat],
+                 bearing:motion.bearing ?? map.getBearing() });
+  }
+
+  const err = hv(motion.pos, desired);
+  const bErr = desired.bearing == null || motion.bearing == null ? 0
+    : Math.abs(angleDelta(motion.bearing, desired.bearing));
+  const liveSpeed = staleSpeed(desired.ageS, motion.speed);
+  if (liveSpeed > .15 || err > .12 || bErr > .25 || desired.ageS < 1.2)
+    motion.raf = requestAnimationFrame(drawMotionFrame);
+}
+function ensureMotionLoop(){
+  if (motion.raf || !motion.anchor || !marker) return;
+  if (document.visibilityState !== "visible" || state.presentation !== "map") return;
+  motion.lastDraw = 0;
+  motion.raf = requestAnimationFrame(drawMotionFrame);
+}
+
 function initMap(lon, lat){
   map = new maplibregl.Map({
     container:"map", style:STYLE,
@@ -965,12 +1106,14 @@ function initMap(lon, lat){
   map.on("load", () => { mapReady = true; applyMapPadding(); if (nav.coords.length) drawNavRoute(); });
   map.on("movestart", e => { if (e.originalEvent) suspendFollow(); });
 }
-function updateCamera(lon, lat, bearing){
-  if (!marker) return;
-  marker.setLngLat([lon,lat]);
-  marker.setRotation(bearing ?? 0);
-  if (state.presentation === "map" && mapReady && following)
-    map.easeTo({ center:[lon,lat], bearing:bearing ?? map.getBearing(), duration:600, easing:x=>x });
+function updateCamera(lon, lat, bearing, acc=999, routeProj=null){
+  const snapped = routeProj && routeProj.d <= routeSnapLimit(acc);
+  setMotionTarget({
+    lat: snapped ? routeProj.lat : lat,
+    lon: snapped ? routeProj.lon : lon,
+    bearing: snapped ? routeProj.bearing : bearing,
+    routeAlong: snapped ? routeProj.along : null
+  }, acc, dispSpeed);
 }
 function suspendFollow(){
   following = false;
@@ -981,8 +1124,11 @@ function suspendFollow(){
 function resumeFollow(){
   clearTimeout(followTimer);
   following = true;
-  if (marker && mapReady && state.presentation === "map")
-    map.easeTo({ center: marker.getLngLat(), bearing: lastBearing ?? map.getBearing(), duration:500 });
+  if (marker && mapReady && state.presentation === "map"){
+    const p = motion.pos || (() => { const q=marker.getLngLat(); return {lat:q.lat,lon:q.lng}; })();
+    map.jumpTo({ center:[p.lon,p.lat], bearing:motion.bearing ?? lastBearing ?? map.getBearing() });
+  }
+  ensureMotionLoop();
   render();
 }
 
@@ -1040,7 +1186,21 @@ function onFix(pos){
     dispSpeed += alphaFor(acc, m) * (m - dispSpeed);
     if (dispSpeed < .45 && m < .7) dispSpeed = 0;
   }
-  if (c.heading != null && !isNaN(c.heading) && dispSpeed > 1.1) lastBearing = c.heading;
+  if (c.heading != null && !isNaN(c.heading) && dispSpeed > 1.1){
+    lastBearing = normBearing(c.heading);
+  } else if (dispSpeed > 1.1 && fixBuf.length > 1){
+    /* Android levert heading niet op ieder toestel/fix. Leid dan koers af uit
+       voldoende verplaatsing, zodat vrij rijden in 3D toch kan extrapoleren. */
+    let ref = null;
+    for (let i=fixBuf.length-2; i>=0; i--){
+      if (ts-fixBuf[i].t >= 1000){ ref=fixBuf[i]; break; }
+    }
+    if (ref){
+      const here = { lat:c.latitude, lon:c.longitude };
+      const moved = hv(ref, here);
+      if (moved >= Math.max(3, Math.min(acc,20)*.6)) lastBearing = routeBearing(ref, here);
+    }
+  }
 
   /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
   if (trip.running && acc <= 35){
@@ -1069,8 +1229,10 @@ function onFix(pos){
     lastPos = { lat:c.latitude, lon:c.longitude, t:ts };
   }
 
-  updateCamera(c.longitude, c.latitude, lastBearing);
-  navOnFix(c);
+  /* Navigatieberekeningen blijven op de ruwe fix draaien. De teruggegeven
+     projectie mag uitsluitend de visuele marker/camera beïnvloeden. */
+  const routeProj = navOnFix(c);
+  updateCamera(c.longitude, c.latitude, lastBearing, acc, routeProj);
   render();
 }
 function onErr(e){
@@ -1348,7 +1510,7 @@ function syncSettingsUI(){
 
 /* ── bediening (alle handlers: muteer state/voorkeur → render) ── */
 $("modeBtn").onclick = () => { state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60); };
-$("r-exit").onclick  = () => { state.presentation = "map"; render(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); }, 60); };
+$("r-exit").onclick  = () => { state.presentation = "map"; render(); ensureMotionLoop(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); ensureMotionLoop(); }, 60); };
 $("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
 $("unitBtn").onclick  = () => setUnit(!useMph);
@@ -1461,7 +1623,12 @@ document.addEventListener("pointerdown", () => {
 }, { once:false });
 
 setInterval(applyKeepAwake, 5000);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyKeepAwake(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible"){
+    applyKeepAwake();
+    ensureMotionLoop();
+  }
+});
 /* ── rotatie vergrendelen op portret ─────────────────────── */
 async function lockPortrait(){
   try{ if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("portrait"); }
@@ -1490,10 +1657,12 @@ if ("serviceWorker" in navigator){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   RitMeter — navigatiemodule (alleen de routelijn)
+   RitMeter — navigatiemodule
    - Photon geocoding + BRouter routing (GeoJSON)
-   - GEEN turn-by-turn: geen afslagen, geen off-route, geen auto-reroute
+   - geen turn-by-turn-afslaginstructies
    - resterende afstand + ETA via projectie op de routelijn
+   - visuele route-snap met confidence-poort; ruwe GPS blijft meetbron
+   - off-route-detectie + gedebounceerde auto-reroute
    - favorieten in localStorage (rm_fav_nav, max 5)
    - alle zichtbaarheid loopt via state.nav → render()
    ═══════════════════════════════════════════════════════════ */
@@ -1519,28 +1688,84 @@ let navHere = null;                  // laatst bekende GPS-positie {lat,lon}
 let geoTimer = null, geoSeq = 0;
 
 /* ── geo-helpers ─────────────────────────────────────────── */
-/* afstand punt→lijnsegment (meters), lokaal vlak rond p */
-function segDist(p, a, b){
-  const latR = p.lat*Math.PI/180, mLat = 111320, mLon = 111320*Math.cos(latR);
+/* punt→lijnsegment-projectie (meters), lokaal vlak rond p */
+function segProject(p, a, b){
+  const latR = p.lat*Math.PI/180, mLat = 111320;
+  const mLon = 111320*Math.max(1e-6, Math.abs(Math.cos(latR)));
   const ax=(a.lon-p.lon)*mLon, ay=(a.lat-p.lat)*mLat;
   const bx=(b.lon-p.lon)*mLon, by=(b.lat-p.lat)*mLat;
   const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
   let tt = L2>0 ? -((ax*dx+ay*dy)/L2) : 0;
   tt = Math.max(0, Math.min(1, tt));
-  return { d: Math.hypot(ax+tt*dx, ay+tt*dy), t: tt };
+  const px=ax+tt*dx, py=ay+tt*dy;
+  return {
+    d:Math.hypot(px,py), t:tt,
+    lat:p.lat + py/mLat,
+    lon:p.lon + px/mLon,
+    bearing:routeBearing(a,b)
+  };
 }
-/* dichtstbijzijnde route-knooppunt t.o.v. positie (gevensterd voor snelheid) */
-function nearestIdx(here){
+function segDist(p, a, b){
+  const q = segProject(p,a,b);
+  return { d:q.d, t:q.t };
+}
+
+/* dichtstbijzijnde routeprojectie, gevensterd rond de vorige match.
+   Bij een grote afwijking volgt één volledige scan om weer te herstellen. */
+function nearestRouteProjection(here){
   const n = nav.coords.length;
-  let lo = 0, hi = n;
-  if (nav.lastNear != null){ lo = Math.max(0, nav.lastNear-30); hi = Math.min(n, nav.lastNear+120); }
-  let best = lo, bd = Infinity;
-  for (let i = lo; i < hi; i++){
-    const d = hv(here, nav.coords[i]);
-    if (d < bd){ bd = d; best = i; }
+  if (n < 2) return null;
+
+  function scan(lo, hi){
+    let best = null;
+    for (let i=lo; i<hi; i++){
+      const q = segProject(here, nav.coords[i], nav.coords[i+1]);
+      if (!best || q.d < best.d){
+        const segLen = (nav.cum[i+1] || 0) - (nav.cum[i] || 0);
+        best = { ...q, seg:i, along:(nav.cum[i] || 0) + q.t*segLen };
+      }
+    }
+    return best;
   }
-  nav.lastNear = best;
+
+  let lo=0, hi=n-1;
+  if (nav.lastNear != null){
+    lo=Math.max(0, nav.lastNear-30);
+    hi=Math.min(n-1, nav.lastNear+120);
+  }
+  let best = scan(lo,hi);
+  if (nav.lastNear != null && best && best.d > 150) best = scan(0,n-1);
+  if (best) nav.lastNear = best.seg;
   return best;
+}
+
+/* Confidence-poort voor visueel snappen. Bij slechte GPS groeit de tolerantie,
+   maar nooit verder dan 35 m: water/vrij terrein blijft daardoor vrij. */
+function routeSnapLimit(acc){
+  const a = Number.isFinite(acc) ? acc : 25;
+  return Math.min(35, Math.max(12, 1.5*a));
+}
+
+/* Punt + routebearing op een cumulatieve afstand vanaf het begin van de route. */
+function pointAtRouteAlong(along){
+  const n = nav.coords.length;
+  if (n < 2 || nav.cum.length !== n) return null;
+  const total = nav.cum[n-1] || 0;
+  const s = Math.max(0, Math.min(total, along || 0));
+  let lo=0, hi=n-1;
+  while (lo+1<hi){
+    const mid=(lo+hi)>>1;
+    if ((nav.cum[mid] || 0) <= s) lo=mid; else hi=mid;
+  }
+  const a=nav.coords[lo], b=nav.coords[Math.min(lo+1,n-1)];
+  const d0=nav.cum[lo] || 0, d1=nav.cum[Math.min(lo+1,n-1)] || d0;
+  const tt=d1>d0 ? (s-d0)/(d1-d0) : 0;
+  const dLon=((b.lon-a.lon+540)%360)-180;
+  return {
+    lat:a.lat + (b.lat-a.lat)*tt,
+    lon:((a.lon + dLon*tt + 540)%360)-180,
+    bearing:routeBearing(a,b), along:s, seg:lo
+  };
 }
 
 /* ── favorieten (localStorage, max 5) ────────────────────── */
@@ -1651,6 +1876,10 @@ async function fetchRoute(o, d, mode){
   return { coords, distM, etaS: computeEta(distM, parseFloat(p["total-time"]), mode) };
 }
 function applyRoute(r){
+  /* Een nieuwe route maakt een eventuele oude route-dead-reckoning ongeldig.
+     Vanaf de eerstvolgende GPS-fix wordt opnieuw geprojecteerd en gesnapt. */
+  motion.routeMode = false;
+  motion.routeAlong = null;
   nav.coords = r.coords;
   nav.cum = [0];
   for (let i = 1; i < r.coords.length; i++) nav.cum[i] = nav.cum[i-1] + hv(r.coords[i-1], r.coords[i]);
@@ -1753,38 +1982,30 @@ async function navReroute(){
 /* ── per GPS-fix aangeroepen vanuit onFix() (vóór render) ── */
 function navOnFix(c){
   navHere = { lat:c.latitude, lon:c.longitude };
-  if (state.nav !== "route" || !nav.coords.length) return;
+  if (state.nav !== "route" || !nav.coords.length) return null;
   if (map && mapReady && !map.getSource("nav-route")) drawNavRoute();
 
-  const idx = nearestIdx(navHere);
-  /* projecteer op het segment ná het dichtstbijzijnde knooppunt voor een vloeiende rest-afstand */
-  let along = nav.cum[idx] || 0;
-  if (idx < nav.coords.length-1){
-    const seg = segDist(navHere, nav.coords[idx], nav.coords[idx+1]);
-    along = (nav.cum[idx] || 0) + seg.t * ((nav.cum[idx+1] || 0) - (nav.cum[idx] || 0));
-  }
-  nav.remM = Math.max(0, nav.distM - along);
+  const proj = nearestRouteProjection(navHere);
+  if (!proj) return null;
+  nav.remM = Math.max(0, nav.distM - proj.along);
   nav.remEtaS = nav.remM / (nav.vAvg || 8);
 
   /* aankomst: pas melden bij échte nabijheid van de bestemming (niet op projectie) */
   if (nav.dest && hv(navHere, nav.dest) < 30){
     toast(t("nav_arrived"));
     navStop();
-    return;
+    return null;
   }
 
-  /* off-route: loodrechte afstand tot de route; >60 m gedurende >10 s → herbereken
-     (gedebounced, max ~1×/15 s zodat we BRouter niet overvragen) */
-  let offD = Infinity;
-  for (let i = Math.max(0, idx-1); i < Math.min(nav.coords.length-1, idx+1); i++)
-    offD = Math.min(offD, segDist(navHere, nav.coords[i], nav.coords[i+1]).d);
-  if (offD === Infinity) offD = hv(navHere, nav.coords[idx] || navHere);
-
-  if (offD > 60){
+  /* off-route gebruikt bewust de ruwe GPS→route-afstand. De visuele snap kan
+     deze detectie dus nooit maskeren; >60 m gedurende >10 s → herbereken. */
+  if (proj.d > 60){
     if (nav.offSince === null) nav.offSince = Date.now();
     else if (Date.now() - nav.offSince > 10000 && !nav.rerouting
              && Date.now() - nav.lastReroute > 15000) navReroute();
   } else nav.offSince = null;
+
+  return proj;
 }
 
 /* ── selecteren & paneelbediening (muteren state → render) ── */
@@ -1824,6 +2045,8 @@ function navStartGuidance(){
   if (map) setTimeout(() => map.resize(), 60);
 }
 function navStop(){
+  motion.routeMode = false;
+  motion.routeAlong = null;
   nav.coords = []; nav.cum = []; nav.dest = null;
   nav.remM = 0; nav.remEtaS = 0; nav.lastNear = null;
   nav.offSince = null; nav.rerouting = false;
