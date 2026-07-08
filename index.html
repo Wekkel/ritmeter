@@ -841,6 +841,344 @@ function toast(msg){
   toast._t = setTimeout(() => $("toast").classList.remove("show"), 2000);
 }
 
+/* ── begrensde diagnostische ringbuffer ─────────────────────
+   Alleen compacte diagnose-events in geheugen.
+   Geen invloed op tripdata, route logging of persistence. */
+const DIAG_MAX_EVENTS = 240;
+const DIAG_GPS_SAMPLE_MS = 5000;
+
+const diagState = {
+  events:[],
+  seq:0,
+  lastGpsSampleAt:0,
+  transitions:Object.create(null)
+};
+
+function diagSafeValue(value){
+  if (
+    value == null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ){
+    return value;
+  }
+
+  if (value instanceof Error){
+    return {
+      name:value.name || "Error",
+      message:String(value.message || value),
+      stack:value.stack
+        ? String(value.stack).slice(0, 1600)
+        : null
+    };
+  }
+
+  if (Array.isArray(value)){
+    return value
+      .slice(0, 20)
+      .map(diagSafeValue);
+  }
+
+  if (typeof value === "object"){
+    const out = {};
+    let n = 0;
+
+    for (const [key, item] of Object.entries(value)){
+      if (n >= 30) break;
+
+      try{
+        out[key] = diagSafeValue(item);
+      } catch(e){
+        out[key] = "[unavailable]";
+      }
+
+      n++;
+    }
+
+    return out;
+  }
+
+  return String(value);
+}
+
+function diagAdd(type, data=null){
+  const event = {
+    seq:++diagState.seq,
+    at:new Date().toISOString(),
+    perf:+performance.now().toFixed(1),
+    type:String(type)
+  };
+
+  if (data != null){
+    event.data = diagSafeValue(data);
+  }
+
+  diagState.events.push(event);
+
+  if (diagState.events.length > DIAG_MAX_EVENTS){
+    diagState.events.splice(
+      0,
+      diagState.events.length - DIAG_MAX_EVENTS
+    );
+  }
+
+  return event;
+}
+
+function diagTransition(key, value, data=null){
+  const next = String(value);
+
+  if (diagState.transitions[key] === next){
+    return false;
+  }
+
+  const prev = Object.prototype.hasOwnProperty.call(
+    diagState.transitions,
+    key
+  )
+    ? diagState.transitions[key]
+    : null;
+
+  diagState.transitions[key] = next;
+
+  diagAdd("state." + key, {
+    from:prev,
+    to:next,
+    ...(data || {})
+  });
+
+  return true;
+}
+
+function diagGpsFix(c, ts, acc){
+  const now = Date.now();
+
+  if (
+    diagState.lastGpsSampleAt &&
+    now - diagState.lastGpsSampleAt < DIAG_GPS_SAMPLE_MS
+  ){
+    return;
+  }
+
+  diagState.lastGpsSampleAt = now;
+
+  diagAdd("gps.fix", {
+    ts,
+    lat:Number.isFinite(c.latitude)
+      ? +c.latitude.toFixed(6)
+      : null,
+    lon:Number.isFinite(c.longitude)
+      ? +c.longitude.toFixed(6)
+      : null,
+    acc:Number.isFinite(acc)
+      ? +acc.toFixed(1)
+      : null,
+    speed:Number.isFinite(c.speed)
+      ? +c.speed.toFixed(2)
+      : null,
+    heading:Number.isFinite(c.heading)
+      ? +c.heading.toFixed(1)
+      : null,
+    dispSpeed:Number.isFinite(dispSpeed)
+      ? +dispSpeed.toFixed(2)
+      : null,
+    presentation:state.presentation,
+    nav:state.nav
+  });
+}
+
+function diagSnapshot(){
+  return {
+    at:new Date().toISOString(),
+    visibility:document.visibilityState,
+    presentation:state.presentation,
+    nav:state.nav,
+    overlay:state.overlay,
+    following,
+    firstFix,
+    lastFixAgeMs:lastFixTime
+      ? Math.max(0, Date.now() - lastFixTime)
+      : null,
+    dispSpeed:Number.isFinite(dispSpeed)
+      ? +dispSpeed.toFixed(2)
+      : null,
+    stationary:typeof stationary !== "undefined"
+      ? {
+          active:stationary.active,
+          candidateSince:stationary.candidateSince,
+          exitEvidence:stationary.exitEvidence
+        }
+      : null,
+    motion:typeof motion !== "undefined"
+      ? {
+          hasPos:!!motion.pos,
+          hasAnchor:!!motion.anchor,
+          bearing:motion.bearing == null
+            ? null
+            : +motion.bearing.toFixed(1),
+          speed:Number.isFinite(motion.speed)
+            ? +motion.speed.toFixed(2)
+            : null,
+          acc:Number.isFinite(motion.acc)
+            ? +motion.acc.toFixed(1)
+            : null,
+          routeMode:motion.routeMode,
+          routeAlong:motion.routeAlong == null
+            ? null
+            : +motion.routeAlong.toFixed(1),
+          staleActive:motion.staleActive,
+          anchorAgeMs:motion.anchorPerf
+            ? Math.max(
+                0,
+                Math.round(
+                  performance.now() - motion.anchorPerf
+                )
+              )
+            : null,
+          lastFixPerfAgeMs:motion.lastFixPerf
+            ? Math.max(
+                0,
+                Math.round(
+                  performance.now() - motion.lastFixPerf
+                )
+              )
+            : null
+        }
+      : null
+  };
+}
+
+function diagPollTransitions(){
+  diagTransition(
+    "visibility",
+    document.visibilityState
+  );
+
+  diagTransition(
+    "presentation",
+    state.presentation
+  );
+
+  diagTransition(
+    "nav",
+    state.nav
+  );
+
+  diagTransition(
+    "following",
+    following ? "on" : "off"
+  );
+
+  if (typeof stationary !== "undefined"){
+    diagTransition(
+      "stationary",
+      stationary.active ? "on" : "off"
+    );
+  }
+
+  if (typeof motion !== "undefined"){
+    diagTransition(
+      "stale",
+      motion.staleActive ? "on" : "off",
+      motion.staleActive
+        ? {
+            speed:Number.isFinite(motion.speed)
+              ? +motion.speed.toFixed(2)
+              : null,
+            routeMode:motion.routeMode
+          }
+        : null
+    );
+  }
+}
+
+window.addEventListener("error", event => {
+  diagAdd("js.error", {
+    message:event.message || "Unknown error",
+    source:event.filename || null,
+    line:event.lineno || null,
+    column:event.colno || null,
+    error:event.error || null
+  });
+});
+
+window.addEventListener("unhandledrejection", event => {
+  diagAdd("promise.unhandled", {
+    reason:event.reason instanceof Error
+      ? event.reason
+      : diagSafeValue(event.reason)
+  });
+});
+
+const RitMeterDiag = Object.freeze({
+  get(){
+    return diagState.events.map(event => ({
+      ...event,
+      data:event.data == null
+        ? event.data
+        : diagSafeValue(event.data)
+    }));
+  },
+
+  latest(count=20){
+    const n = Math.max(
+      0,
+      Math.min(
+        DIAG_MAX_EVENTS,
+        Math.floor(Number(count) || 0)
+      )
+    );
+
+    return diagState.events
+      .slice(-n)
+      .map(event => ({
+        ...event,
+        data:event.data == null
+          ? event.data
+          : diagSafeValue(event.data)
+      }));
+  },
+
+  state(){
+    return diagSnapshot();
+  },
+
+  clear(){
+    diagState.events.length = 0;
+    diagState.seq = 0;
+    diagState.lastGpsSampleAt = 0;
+    diagState.transitions = Object.create(null);
+  },
+
+  async copy(){
+    const text = JSON.stringify({
+      exportedAt:new Date().toISOString(),
+      snapshot:diagSnapshot(),
+      events:diagState.events
+    }, null, 2);
+
+    if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ){
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    return text;
+  }
+});
+
+window.RitMeterDiag = RitMeterDiag;
+
+diagAdd("app.diag_ready", {
+  maxEvents:DIAG_MAX_EVENTS,
+  gpsSampleMs:DIAG_GPS_SAMPLE_MS
+});
+
+setInterval(diagPollTransitions, 1000);
+
 /* ── IndexedDB ───────────────────────────────────────────── */
 let dbP = null;
 function db(){
@@ -2051,7 +2389,18 @@ function resumeFollow(){
 
 /* ── GPS & snelheidsfilter (hergebruikt) ─────────────────── */
 function startGPS(){
-  if (!("geolocation" in navigator)){ showNotice(t("ntc_nogps"), t("ntc_nogps_t")); return; }
+  if (!("geolocation" in navigator)){
+    diagAdd("gps.unsupported");
+    showNotice(t("ntc_nogps"), t("ntc_nogps_t"));
+    return;
+  }
+
+  diagAdd("gps.watch_start", {
+    enableHighAccuracy:true,
+    maximumAge:1000,
+    timeout:15000
+  });
+
   navigator.geolocation.watchPosition(onFix, onErr,
     { enableHighAccuracy:true, maximumAge:1000, timeout:15000 });
 }
@@ -2077,9 +2426,11 @@ function onFix(pos){
     initMap(c.longitude, c.latitude);
   }
 
-  const acc = c.accuracy ?? 999;
+    const acc = c.accuracy ?? 999;
   $("gpsDot").className = acc <= 8 ? "ok" : acc <= 25 ? "mid" : "";
   $("gpsTxt").textContent = `±${Math.round(acc)} m`;
+
+  diagGpsFix(c, ts, acc);
 
   if (c.altitude != null && !isNaN(c.altitude)){
     const va = (c.altitudeAccuracy != null && !isNaN(c.altitudeAccuracy)) ? c.altitudeAccuracy : 30;
@@ -2254,6 +2605,19 @@ function onFix(pos){
 }
    
 function onErr(e){
+  diagAdd("gps.error", {
+    code:e && Number.isFinite(e.code)
+      ? e.code
+      : null,
+    message:e && e.message
+      ? String(e.message)
+      : null,
+    visibility:document.visibilityState,
+    lastFixAgeMs:lastFixTime
+      ? Math.max(0, Date.now() - lastFixTime)
+      : null
+  });
+
   if (e.code === 1) showNotice(t("ntc_deny"), t("ntc_deny_t"));
   else $("gpsTxt").textContent = t("nofix");
 }
