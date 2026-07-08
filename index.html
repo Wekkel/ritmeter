@@ -829,6 +829,24 @@ function measuring(){
 
 let lastPos = null, lastSample = null, fixBuf = [], dispSpeed = 0;
 let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, lastLon = null;
+/* ── diagnose kilometerverlies (Patch 6) ─────────────────────
+   Telt per rit hoeveel meters de bestaande tripfilters verwerpen.
+   Alleen tellers + één diag-event per minuut; geen invloed op
+   trip.dist, routelogging of persistence. */
+const tripLoss = {
+  accDropM:0,    // meters verworpen doordat acc > 35 lastPos liet opschuiven
+  accDropN:0,
+  gateSkipN:0,   // fixes die de bewegingsdrempel niet haalden
+  glitchDropM:0, // meters verworpen via de d > 200-glitchtak
+  glitchN:0,
+  lastLogAt:0
+};
+function resetTripLoss(){
+  tripLoss.accDropM = 0; tripLoss.accDropN = 0;
+  tripLoss.gateSkipN = 0;
+  tripLoss.glitchDropM = 0; tripLoss.glitchN = 0;
+  tripLoss.lastLogAt = 0;
+}
 let lastMotion = 0;
 const GEOID_NL = 43;
 let altOffset = parseFloat(LS.getItem("rm_altoff"));
@@ -2894,7 +2912,7 @@ function onFix(pos){
     }
   }
 
-  /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
+ /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
   if (trip.running && acc <= 35){
     trip.accSum += acc; trip.accN++;
     const here = { lat:c.latitude, lon:c.longitude };
@@ -2906,7 +2924,11 @@ function onFix(pos){
         if (dispSpeed > trip.max) trip.max = dispSpeed;
         lastPos = { ...here, t:ts };
       } else if (d > 200){
+        tripLoss.glitchDropM += d;
+        tripLoss.glitchN++;
         lastPos = { ...here, t:ts };
+      } else {
+        tripLoss.gateSkipN++;
       }
     } else lastPos = { ...here, t:ts };
 
@@ -2917,7 +2939,25 @@ function onFix(pos){
                    acc: Math.round(acc) });
       lastSample = { ...here, t:ts };
     }
+
+    if (Date.now() - tripLoss.lastLogAt >= 60000){
+      tripLoss.lastLogAt = Date.now();
+      diagAdd("trip.loss", {
+        phase:"interval",
+        distM:+trip.dist.toFixed(0),
+        accDropM:+tripLoss.accDropM.toFixed(0),
+        accDropN:tripLoss.accDropN,
+        gateSkipN:tripLoss.gateSkipN,
+        glitchDropM:+tripLoss.glitchDropM.toFixed(0),
+        glitchN:tripLoss.glitchN,
+        acc:Math.round(acc)
+      });
+    }
   } else {
+    if (trip.running && lastPos){
+      tripLoss.accDropM += hv(lastPos, { lat:c.latitude, lon:c.longitude });
+      tripLoss.accDropN++;
+    }
     lastPos = { lat:c.latitude, lon:c.longitude, t:ts };
   }
 
@@ -3002,11 +3042,24 @@ function toggleTrip(){
   trip.running = !trip.running;
   if (trip.running){
     if (!trip.start) trip.start = Date.now();
+    if (!trip.ms) resetTripLoss();
     lastPos = null; lastSample = null;
-  } else LS.setItem("rm_route", JSON.stringify(route));
+  } else {
+    LS.setItem("rm_route", JSON.stringify(route));
+    diagAdd("trip.loss", {
+      phase:"stop",
+      distM:+trip.dist.toFixed(0),
+      accDropM:+tripLoss.accDropM.toFixed(0),
+      accDropN:tripLoss.accDropN,
+      gateSkipN:tripLoss.gateSkipN,
+      glitchDropM:+tripLoss.glitchDropM.toFixed(0),
+      glitchN:tripLoss.glitchN
+    });
+  }
   LS.setItem("rm_trip", JSON.stringify(trip));
   render();
 }
+   
 function tripName(start){
   const d = new Date(start || Date.now());
   return d.toLocaleDateString(loc(), { day:"numeric", month:"short" }) + " " +
@@ -3022,8 +3075,9 @@ async function saveAndReset(){
     };
     try { await idbPut(rec); toast(t("saved")); } catch(e){ console.error(e); }
   } else toast(t("cleared"));
-  Object.assign(trip, { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 });
+ Object.assign(trip, { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 });
   route = []; lastSample = null;
+  resetTripLoss();
   LS.setItem("rm_trip", JSON.stringify(trip));
   LS.removeItem("rm_route");
   render();
