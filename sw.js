@@ -6,12 +6,12 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.1.3";                 // ← bump bij wijziging van shell of deze worker - more robust logging
+const VERSION = "1.1.4";                 // ← bump bij wijziging van shell of deze worker - more robust logging
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
 const TILE_HOSTS    = ["tiles.openfreemap.org"];          // tiles + style + glyphs + sprite
-const TILE_MAX_BYTES = 100 * 1024 * 1024;                 // 100 MB plafond
+const TILE_MAX_BYTES = 400 * 1024 * 1024;                 // 400 MB plafond
 const TILE_MAX_AGE   = 30 * 24 * 60 * 60 * 1000;          // 30 dagen → daarna verversen
 
 const SHELL = [
