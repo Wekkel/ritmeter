@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.1.1";                 // ← bump bij wijziging van shell of deze worker - diagnostic code for missing kms
+const VERSION = "1.1.2";                 // ← bump bij wijziging van shell of deze worker - better bad GPS handling
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
