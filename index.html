@@ -818,9 +818,11 @@ const trip = Object.assign(
 );
 
 let route = [];
-if (trip.ms > 0) {
-  const parsedRoute = JSON.parse(LS.getItem("rm_route") || "[]");
-  route = Array.isArray(parsedRoute) ? parsedRoute : [];
+if (trip.ms > 0 && LS.getItem("rm_route_idb") !== "1") {
+  try{
+    const parsedRoute = JSON.parse(LS.getItem("rm_route") || "[]");
+    route = Array.isArray(parsedRoute) ? parsedRoute : [];
+  } catch(e){ route = []; }
 }
 function measuring(){
   if (trip.running) return (autoPause && isPaused) ? "paused" : "running";
@@ -1566,9 +1568,59 @@ const idbAll = () => db().then(d => new Promise((res, rej) => {
 const idbGet = id => db().then(d => new Promise((res, rej) => {
   const r = txs(d, "readonly").get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
 }));
-const idbDel = id => db().then(d => new Promise((res, rej) => {
-  const r = txs(d, "readwrite").delete(id); r.onsuccess = res; r.onerror = () => rej(r.error);
-}));
+/* ── robuuste route-persistentie (Patch 7) ──────────────────
+   localStorage is op iOS beperkt (~5 MB origin-totaal). Lange
+   ritten schakelen automatisch en permanent (per rit) over op
+   IndexedDB. Een mislukte save mag nooit stil blijven of de
+   app breken. */
+const ROUTE_LS_MAX_CHARS = 1500000;   // ~1,5 MB: ruim onder het iOS-quotum
+const ROUTE_IDB_ID = "rm_route_inprogress";
+let routePersistLast = 0;
+
+function persistRoute(force=false){
+  const now = Date.now();
+
+  /* Grote routes niet vaker dan eens per 60 s serialiseren;
+     kleine routes en geforceerde flushes (stop/pagehide) altijd. */
+  if (!force && route.length > 4000 && now - routePersistLast < 60000) return;
+  routePersistLast = now;
+
+  if (LS.getItem("rm_route_idb") !== "1"){
+    const json = JSON.stringify(route);
+
+    if (json.length <= ROUTE_LS_MAX_CHARS){
+      try{
+        LS.setItem("rm_route", json);
+        return;
+      } catch(e){
+        diagAdd("route.ls_failed", { chars:json.length, points:route.length });
+      }
+    } else {
+      diagAdd("route.idb_switch", { chars:json.length, points:route.length });
+    }
+
+    /* Overschakelen naar IndexedDB; localStorage-ruimte vrijgeven. */
+    try{ LS.setItem("rm_route_idb", "1"); } catch(e){}
+    try{ LS.removeItem("rm_route"); } catch(e){}
+  }
+
+  idbPut({ id:ROUTE_IDB_ID, points:route, savedAt:now }).catch(()=>{});
+}
+
+function clearPersistedRoute(){
+  try{ LS.removeItem("rm_route"); } catch(e){}
+  try{ LS.removeItem("rm_route_idb"); } catch(e){}
+  idbDel(ROUTE_IDB_ID).catch(()=>{});
+}
+
+/* Herstel van een lopende grote rit na PWA-herstart. */
+if (trip.ms > 0 && LS.getItem("rm_route_idb") === "1"){
+  idbGet(ROUTE_IDB_ID).then(rec => {
+    if (rec && Array.isArray(rec.points)){
+      route = rec.points.concat(route);
+    }
+  }).catch(()=>{});
+}
 
 /* ═══ HET RENDER-CONTRACT ══════════════════════════════════
    1) body-data-attributen uit state  2) inhoud  3) kaart-padding
@@ -2945,7 +2997,14 @@ function onFix(pos){
       }
     } else lastPos = { ...here, t:ts };
 
-    if (!lastSample || ts - lastSample.t >= 3000 || hv(lastSample, here) >= 25){
+    /* Snelheidsadaptieve routesampling (Patch 7): boven ~54 km/u is
+       3 s / 25 m onnodig dicht. 10 s / 100 m houdt een lange autorit
+       compact zonder merkbaar geometrieverlies; fiets-, brom- en
+       bootgedrag blijft exact ongewijzigd. */
+    const sampleFast = dispSpeed >= 15;
+    const sampleMs = sampleFast ? 10000 : 3000;
+    const sampleM  = sampleFast ? 100 : 25;
+    if (!lastSample || ts - lastSample.t >= sampleMs || hv(lastSample, here) >= sampleM){
       route.push({ t:ts, lat:+c.latitude.toFixed(6), lon:+c.longitude.toFixed(6),
                    v:+dispSpeed.toFixed(2),
                    alt: lastAltRaw == null ? null : +(lastAltRaw - altOffset).toFixed(1),
@@ -3050,12 +3109,12 @@ setInterval(() => {
   if (trip.running || dispSpeed > 0) render();
 }, 1000);
 setInterval(() => {
-  LS.setItem("rm_trip", JSON.stringify(trip));
-  if (trip.running) LS.setItem("rm_route", JSON.stringify(route));
+  try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
+  if (trip.running) persistRoute();
 }, 15000);
 addEventListener("pagehide", () => {
-  LS.setItem("rm_trip", JSON.stringify(trip));
-  if (trip.running) LS.setItem("rm_route", JSON.stringify(route));
+  try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
+  if (trip.running) persistRoute(true);
 });
 
 /* ── meten: start/stop/reset ─────────────────────────────── */
@@ -3065,8 +3124,8 @@ function toggleTrip(){
     if (!trip.start) trip.start = Date.now();
     if (!trip.ms) resetTripLoss();
     lastPos = null; lastSample = null;
-  } else {
-    LS.setItem("rm_route", JSON.stringify(route));
+ } else {
+    persistRoute(true);
     diagAdd("trip.loss", {
       phase:"stop",
       distM:+trip.dist.toFixed(0),
@@ -3099,15 +3158,17 @@ async function saveAndReset(){
  Object.assign(trip, { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 });
   route = []; lastSample = null;
   resetTripLoss();
-  LS.setItem("rm_trip", JSON.stringify(trip));
-  LS.removeItem("rm_route");
+  try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
+  clearPersistedRoute();
   render();
 }
 
 /* ── geschiedenis (modale overlay) ───────────────────────── */
 async function openHist(){
   state.overlay = "history"; render();
-  const trips = (await idbAll().catch(() => [])).sort((a,b) => b.id - a.id);
+  const trips = (await idbAll().catch(() => []))
+    .filter(r => r && typeof r.dist === "number")
+    .sort((a,b) => b.id - a.id);
   const list = $("histList");
   list.innerHTML = "";
   $("histEmpty").style.display = trips.length ? "none" : "block";
@@ -3247,13 +3308,16 @@ async function shareGPX(){
   shareOrDownload(new File([toGPX(r)], fname, { type:"application/gpx+xml" }), r.name);
 }
 async function gpxAll(){
-  const trips = (await idbAll().catch(() => [])).sort((a,b) => a.id - b.id);
+ const trips = (await idbAll().catch(() => []))
+    .filter(r => r && typeof r.dist === "number")
+    .sort((a,b) => a.id - b.id);
   if (!trips.length) return;
   shareOrDownload(new File([gpxDoc(trips.map(trkXML).join("\n"))],
     "ritmeter_alle_ritten.gpx", { type:"application/gpx+xml" }), "RitMeter");
 }
 async function backup(){
-  const trips = await idbAll().catch(() => []);
+ const trips = (await idbAll().catch(() => []))
+    .filter(r => r && typeof r.dist === "number");
   const data = JSON.stringify({ app:"ritmeter", v:1, exported:new Date().toISOString(), trips });
   const fname = "ritmeter_backup_" + new Date().toISOString().slice(0,10) + ".json";
   shareOrDownload(new File([data], fname, { type:"application/json" }), "RitMeter back-up");
