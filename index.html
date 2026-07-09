@@ -834,17 +834,19 @@ let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, last
    Alleen tellers + één diag-event per minuut; geen invloed op
    trip.dist, routelogging of persistence. */
 const tripLoss = {
-  accDropM:0,    // meters verworpen doordat acc > 35 lastPos liet opschuiven
+  accDropM:0,    // meters gereden tijdens acc > 35 (wordt nu overbrugd, niet verworpen)
   accDropN:0,
   gateSkipN:0,   // fixes die de bewegingsdrempel niet haalden
   glitchDropM:0, // meters verworpen via de d > 200-glitchtak
   glitchN:0,
+  lastBadPos:null, // laatste slechte-accuracy-fix, alleen voor meting
   lastLogAt:0
 };
 function resetTripLoss(){
   tripLoss.accDropM = 0; tripLoss.accDropN = 0;
   tripLoss.gateSkipN = 0;
   tripLoss.glitchDropM = 0; tripLoss.glitchN = 0;
+  tripLoss.lastBadPos = null;
   tripLoss.lastLogAt = 0;
 }
 let lastMotion = 0;
@@ -2913,9 +2915,20 @@ function onFix(pos){
   }
 
  /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
-  if (trip.running && acc <= 35){
+ if (trip.running && acc <= 35){
     trip.accSum += acc; trip.accN++;
     const here = { lat:c.latitude, lon:c.longitude };
+
+    if (tripLoss.lastBadPos){
+      /* Einde slechte-accuracy-episode: de koorde vanaf de bevroren
+         lastPos wordt hieronder via het normale pad geteld. */
+      diagAdd("trip.bridge", {
+        bridgeM: lastPos ? +hv(lastPos, here).toFixed(0) : null,
+        badPathM: +tripLoss.accDropM.toFixed(0),
+        badFixN: tripLoss.accDropN
+      });
+      tripLoss.lastBadPos = null;
+    }
     if (lastPos){
       const d  = hv(lastPos, here);
       const dt = (ts - lastPos.t) / 1000;
@@ -2953,11 +2966,19 @@ function onFix(pos){
         acc:Math.round(acc)
       });
     }
+ } else if (trip.running){
+    /* Patch 6b: bij acc > 35 schuift lastPos NIET meer op.
+       De werkelijk gereden afstand over dit segment wordt bij de
+       eerstvolgende goede fix als koorde alsnog geteld, beveiligd
+       door de bestaande d/dt < 70-poort. De tellers meten het
+       segment alleen nog ter verificatie. */
+    const hereBad = { lat:c.latitude, lon:c.longitude };
+    const badRef = tripLoss.lastBadPos ||
+      (lastPos ? { lat:lastPos.lat, lon:lastPos.lon } : null);
+    if (badRef) tripLoss.accDropM += hv(badRef, hereBad);
+    tripLoss.accDropN++;
+    tripLoss.lastBadPos = hereBad;
   } else {
-    if (trip.running && lastPos){
-      tripLoss.accDropM += hv(lastPos, { lat:c.latitude, lon:c.longitude });
-      tripLoss.accDropN++;
-    }
     lastPos = { lat:c.latitude, lon:c.longitude, t:ts };
   }
 
