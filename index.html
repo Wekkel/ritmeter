@@ -1568,6 +1568,12 @@ const idbAll = () => db().then(d => new Promise((res, rej) => {
 const idbGet = id => db().then(d => new Promise((res, rej) => {
   const r = txs(d, "readonly").get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
 }));
+/* Patch 8a: idbDel ontbrak volledig in het bestand, terwijl
+   clearPersistedRoute() en het verwijderen van een rit in de
+   historie hem wél aanroepen (ReferenceError). */
+const idbDel = id => db().then(d => new Promise((res, rej) => {
+  const r = txs(d, "readwrite").delete(id); r.onsuccess = res; r.onerror = () => rej(r.error);
+}));
 /* ── robuuste route-persistentie (Patch 7) ──────────────────
    localStorage is op iOS beperkt (~5 MB origin-totaal). Lange
    ritten schakelen automatisch en permanent (per rit) over op
@@ -1576,6 +1582,13 @@ const idbGet = id => db().then(d => new Promise((res, rej) => {
 const ROUTE_LS_MAX_CHARS = 1500000;   // ~1,5 MB: ruim onder het iOS-quotum
 const ROUTE_IDB_ID = "rm_route_inprogress";
 let routePersistLast = 0;
+/* Patch 8b: transactionele LS→IDB-migratie.
+   - routeSaveSeq: volgnummer per gestarte save; commit-side-effects
+     (rm_route wissen) gebeuren alleen voor de nieuwste save.
+   - routeSaveChain: serialiseert alle IDB-writes zodat een trage,
+     oudere write nooit een nieuwere route kan overschrijven. */
+let routeSaveSeq = 0;
+let routeSaveChain = Promise.resolve();
 
 function persistRoute(force=false){
   const now = Date.now();
@@ -1598,28 +1611,109 @@ function persistRoute(force=false){
     } else {
       diagAdd("route.idb_switch", { chars:json.length, points:route.length });
     }
-
-    /* Overschakelen naar IndexedDB; localStorage-ruimte vrijgeven. */
-    try{ LS.setItem("rm_route_idb", "1"); } catch(e){}
-    try{ LS.removeItem("rm_route"); } catch(e){}
+    /* Belangrijk: hier NIET de vlag zetten en NIET rm_route wissen.
+       Dat gebeurt pas hieronder, nadat de IDB-write is bevestigd.
+       Tot die tijd blijft de laatste LS-kopie het herstelpunt. */
   }
 
-  idbPut({ id:ROUTE_IDB_ID, points:route, savedAt:now }).catch(()=>{});
+  /* Snapshot op dit moment: de async write mag niet afhangen van
+     latere mutaties van `route` (ondiepe kopie; punten muteren niet). */
+  const seq = ++routeSaveSeq;
+  const snapshot = route.slice();
+
+  routeSaveChain = routeSaveChain
+    .then(() => idbPut({ id:ROUTE_IDB_ID, points:snapshot, savedAt:now }))
+    .then(() => {
+      /* COMMIT: write is bevestigd. Alleen de nieuwste save mag
+         zijeffecten uitvoeren; een verouderde write (er is intussen
+         een nieuwere gestart, of clearPersistedRoute() draaide) mag
+         de vlag niet (opnieuw) zetten of LS opruimen. Overslaan is
+         veilig: de nieuwere save in de keten commit direct hierna. */
+      if (seq !== routeSaveSeq) return;
+      if (LS.getItem("rm_route_idb") !== "1"){
+        try{ LS.setItem("rm_route_idb", "1"); } catch(e){
+          /* Vlag zetten mislukt: LS-kopie blijft staan; bij herstart
+             wordt dan de (iets oudere) LS-route geladen — geen verlies
+             van de vlagloze toestand, alleen van dit ene interval. */
+        }
+        diagAdd("route.idb_committed", { points:snapshot.length });
+      }
+      /* Oude LS-kopie pas na bevestigde write opruimen. */
+      try{ LS.removeItem("rm_route"); } catch(e){}
+    })
+    .catch(err => {
+      diagAdd("route.idb_failed", {
+        points:snapshot.length,
+        error: err && err.name ? String(err.name) : String(err)
+      });
+      /* Fallback: als de migratie nog niet gecommit is, probeer de
+         actuele route alsnog in localStorage te zetten — ook boven de
+         soft-limiet; het echte quotum ligt hoger. Beter een geslaagde
+         te-grote LS-write dan niets. */
+      if (seq === routeSaveSeq && LS.getItem("rm_route_idb") !== "1"){
+        try{
+          LS.setItem("rm_route", JSON.stringify(route));
+          diagAdd("route.ls_fallback_ok", { points:route.length });
+        } catch(e){
+          diagAdd("route.ls_fallback_failed", { points:route.length });
+        }
+      }
+    });
 }
 
 function clearPersistedRoute(){
+  /* Maak eventueel nog lopende writes "oud" zodat hun commit-stap
+     geen zijeffecten meer heeft… */
+  routeSaveSeq++;
   try{ LS.removeItem("rm_route"); } catch(e){}
   try{ LS.removeItem("rm_route_idb"); } catch(e){}
-  idbDel(ROUTE_IDB_ID).catch(()=>{});
+  /* …en hang de delete ACHTER de write-keten, zodat een trage write
+     het record niet ná de delete opnieuw kan aanmaken. */
+  routeSaveChain = routeSaveChain
+    .catch(()=>{})
+    .then(() => idbDel(ROUTE_IDB_ID))
+    .catch(err => diagAdd("route.idb_clear_failed", {
+      error: err && err.name ? String(err.name) : String(err)
+    }));
 }
 
-/* Herstel van een lopende grote rit na PWA-herstart. */
+/* Herstel van een lopende grote rit na PWA-herstart (Patch 8b).
+   De vlag rm_route_idb="1" wordt sinds Patch 8b pas gezet ná een
+   bevestigde IDB-write, maar oudere installaties of IDB-evictie
+   door het OS kunnen alsnog een inconsistente toestand opleveren:
+   vlag staat, record ontbreekt. Dan vallen we terug op een
+   eventueel nog aanwezige localStorage-kopie. */
+function restoreRouteFromLS(reason){
+  try{
+    const parsed = JSON.parse(LS.getItem("rm_route") || "[]");
+    if (Array.isArray(parsed) && parsed.length){
+      route = parsed.concat(route);
+      diagAdd("route.restore_ls_fallback", { reason, points:parsed.length });
+      /* Migratiestatus terugdraaien: de route leeft weer in LS,
+         persistRoute() migreert vanzelf opnieuw zodra dat nodig is. */
+      try{ LS.removeItem("rm_route_idb"); } catch(e){}
+      return true;
+    }
+  } catch(e){}
+  diagAdd("route.restore_none", { reason });
+  return false;
+}
 if (trip.ms > 0 && LS.getItem("rm_route_idb") === "1"){
   idbGet(ROUTE_IDB_ID).then(rec => {
-    if (rec && Array.isArray(rec.points)){
+    if (rec && Array.isArray(rec.points) && rec.points.length){
       route = rec.points.concat(route);
+      diagAdd("route.restore_idb", { points:rec.points.length });
+      /* Eventuele verweesde (oudere) LS-kopie opruimen: IDB is nieuwer. */
+      try{ LS.removeItem("rm_route"); } catch(e){}
+    } else {
+      restoreRouteFromLS("idb_record_missing");
     }
-  }).catch(()=>{});
+  }).catch(err => {
+    diagAdd("route.restore_idb_error", {
+      error: err && err.name ? String(err.name) : String(err)
+    });
+    restoreRouteFromLS("idb_open_failed");
+  });
 }
 
 /* ═══ HET RENDER-CONTRACT ══════════════════════════════════
@@ -2806,21 +2900,109 @@ function resumeFollow(){
 }
 
 /* ── GPS & snelheidsfilter (hergebruikt) ─────────────────── */
-function startGPS(){
+/* ── GPS-watchdog (Patch 8c) ────────────────────────────────
+   Doel: een gestorven geolocation-watch tijdens een zeer lange
+   rit (10–12 u) gecontroleerd herstarten, zonder restart-loops
+   of gestapelde watches. Eén watch-ID, één herstartpad, één
+   cooldown. De watchdog kijkt naar het uitblijven van ÁLLE
+   callbacks (fix én error): een stroom TIMEOUT-errors betekent
+   dat de watch nog leeft (slechte ontvangst) — dan niet
+   herstarten. Tijdelijk slechte accuracy raakt de watchdog
+   evenmin: accuracy-afhandeling blijft volledig bij de
+   bestaande tripfilters/Patch 6. */
+const gpsWd = {
+  watchId: null,     // actieve watchPosition-ID (null = geen watch)
+  lastCallback: 0,   // laatste levensteken: onFix óf onErr
+  lastRestart: 0,    // voor cooldown
+  restarts: 0,
+  errStreak: 0,      // opeenvolgende errors (code 2/3) zonder fix
+  awaitingFix: false,// true tussen herstart en eerstvolgende fix
+  denied: false,     // permissie geweigerd: nooit auto-herstarten
+  foregroundAt: 0,   // laatste terugkeer naar foreground
+  lastSuppressLog: 0
+};
+const GPS_WD_STALE_MS   = 45000;  // geen enkele callback in 45 s ⇒ stale
+const GPS_WD_COOLDOWN   = 60000;  // max. 1 auto-herstart per minuut
+const GPS_WD_FG_GRACE   = 15000;  // na foreground: watch 15 s de kans geven
+const GPS_WD_ERR_STREAK = 4;      // pas na 4 errors op rij herstarten
+
+function startGPS(reason="manual"){
   if (!("geolocation" in navigator)){
     diagAdd("gps.unsupported");
     showNotice(t("ntc_nogps"), t("ntc_nogps_t"));
     return;
   }
 
+  /* Altijd eerst de oude watch opruimen: dit maakt startGPS()
+     idempotent en sluit gestapelde watches uit. */
+  if (gpsWd.watchId != null){
+    try{ navigator.geolocation.clearWatch(gpsWd.watchId); } catch(e){}
+    gpsWd.watchId = null;
+  }
+
   diagAdd("gps.watch_start", {
+    reason,
+    restarts:gpsWd.restarts,
     enableHighAccuracy:true,
     maximumAge:1000,
     timeout:15000
   });
 
-  navigator.geolocation.watchPosition(onFix, onErr,
+  gpsWd.lastCallback = Date.now(); // vers krediet voor de nieuwe watch
+  gpsWd.errStreak = 0;
+  gpsWd.denied = false;            // handmatige retry mag opnieuw proberen
+  gpsWd.awaitingFix = reason !== "initial";
+
+  gpsWd.watchId = navigator.geolocation.watchPosition(onFix, onErr,
     { enableHighAccuracy:true, maximumAge:1000, timeout:15000 });
+}
+
+/* Enige toegestane pad voor automatische herstarts; bewaakt de
+   cooldown centraal zodat watchdog- en error-pad elkaar niet
+   kunnen opjagen. */
+function gpsWatchRestart(reason){
+  const now = Date.now();
+  if (now - gpsWd.lastRestart < GPS_WD_COOLDOWN){
+    if (now - gpsWd.lastSuppressLog > GPS_WD_COOLDOWN){
+      gpsWd.lastSuppressLog = now;
+      diagAdd("gps.restart_suppressed", {
+        reason, sinceRestartMs: now - gpsWd.lastRestart
+      });
+    }
+    return false;
+  }
+  gpsWd.lastRestart = now;
+  gpsWd.restarts++;
+  diagAdd("gps.watch_restart", {
+    reason,
+    restarts:gpsWd.restarts,
+    lastCallbackAgeMs: gpsWd.lastCallback ? now - gpsWd.lastCallback : null,
+    lastFixAgeMs: lastFixTime ? now - lastFixTime : null,
+    visibility: document.visibilityState
+  });
+  startGPS(reason);
+  return true;
+}
+
+/* Wordt elke seconde aangeroepen vanuit de bestaande kloktimer.
+   Bewust conservatief: alleen tijdens een lopende rit, alleen in
+   de foreground, en alleen als de watch echt zwijgt. */
+function gpsWatchdogTick(now){
+  if (!trip.running) return;                              // alleen tijdens rit
+  if (document.visibilityState !== "visible") return;     // background: OS mag GPS pauzeren
+  if (gpsWd.watchId == null || gpsWd.denied) return;      // nooit gestart / permissie geweigerd
+  if (gpsWd.foregroundAt && now - gpsWd.foregroundAt < GPS_WD_FG_GRACE) return; // net terug: geduld
+  if (now - gpsWd.lastCallback <= GPS_WD_STALE_MS) return; // watch leeft nog
+
+  diagAdd("gps.watchdog_stale", {
+    lastCallbackAgeMs: now - gpsWd.lastCallback,
+    lastFixAgeMs: lastFixTime ? now - lastFixTime : null
+  });
+  /* Binnen 2 min na foreground-terugkeer loggen we de herstart als
+     foreground-gerelateerd; dat maakt iOS-suspend-patronen zichtbaar. */
+  const reason = (gpsWd.foregroundAt && now - gpsWd.foregroundAt < 120000)
+    ? "foreground_stale" : "stale";
+  gpsWatchRestart(reason);
 }
 function alphaFor(acc, v){
   let a = acc <= 5 ? .60 : acc <= 10 ? .45 : acc <= 20 ? .30 : .20;
@@ -2831,6 +3013,14 @@ function onFix(pos){
   hideNotice();
   const c = pos.coords, ts = pos.timestamp;
   lastFixTime = Date.now();
+  /* Patch 8c: levensteken voor de watchdog */
+  gpsWd.lastCallback = lastFixTime;
+  gpsWd.errStreak = 0;
+  gpsWd.denied = false;
+  if (gpsWd.awaitingFix){
+    gpsWd.awaitingFix = false;
+    diagAdd("gps.fix_after_restart", { restarts:gpsWd.restarts });
+  }
   lastLat = c.latitude; lastLon = c.longitude;
   if (!firstFix){
     firstFix = true;
@@ -3084,8 +3274,27 @@ function onErr(e){
       : null
   });
 
-  if (e.code === 1) showNotice(t("ntc_deny"), t("ntc_deny_t"));
-  else $("gpsTxt").textContent = t("nofix");
+  /* Patch 8c: een error is óók een levensteken van de watch. */
+  gpsWd.lastCallback = Date.now();
+
+  if (e && e.code === 1){
+    /* Permissie geweigerd: automatische herstarts zijn zinloos en
+       zouden alleen ruis geven. Handmatige retry (ntcBtn) reset dit. */
+    gpsWd.denied = true;
+    gpsWd.errStreak = 0;
+    showNotice(t("ntc_deny"), t("ntc_deny_t"));
+  } else {
+    $("gpsTxt").textContent = t("nofix");
+    /* POSITION_UNAVAILABLE/TIMEOUT: pas na een reeks errors op rij
+       (zonder tussenliggende fix) gecontroleerd herstarten. Eén losse
+       timeout in een tunnel is geen reden voor een restart. */
+    gpsWd.errStreak++;
+    if (trip.running &&
+        document.visibilityState === "visible" &&
+        gpsWd.errStreak >= GPS_WD_ERR_STREAK){
+      if (gpsWatchRestart("error_streak")) gpsWd.errStreak = 0;
+    }
+  }
 }
 
 /* ── klok, auto-pauze & persistentie ─────────────────────── */
@@ -3106,6 +3315,9 @@ setInterval(() => {
   } else { zeroSince = null; isPaused = false; }
   
   if (trip.running && !(autoPause && isPaused)){ trip.ms += delta; }
+
+  gpsWatchdogTick(now);   /* Patch 8c: stale-detectie GPS-watch */
+
   if (trip.running || dispSpeed > 0) render();
 }, 1000);
 setInterval(() => {
@@ -3559,6 +3771,10 @@ document.addEventListener("pointerdown", () => {
 setInterval(applyKeepAwake, 5000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible"){
+    /* Patch 8c: markeer terugkeer; de watchdog geeft de bestaande
+       watch eerst GPS_WD_FG_GRACE de kans om zelf te hervatten
+       (iOS hervat een gesuspendeerde watch vaak vanzelf). */
+    gpsWd.foregroundAt = Date.now();
     applyKeepAwake();
     ensureMotionLoop();
   } else {
@@ -3583,7 +3799,7 @@ function showNotice(title, text){
   $("notice").classList.add("show");
 }
 function hideNotice(){ $("notice").classList.remove("show"); }
-$("ntcBtn").onclick = () => { hideNotice(); startGPS(); };
+$("ntcBtn").onclick = () => { hideNotice(); startGPS("manual_retry"); };
 
 /* ── service worker ──────────────────────────────────────── */
 if ("serviceWorker" in navigator){
@@ -4039,7 +4255,7 @@ applyLang();   // zet teksten + roept syncSettingsUI() + render() aan
 render();
 applyKeepAwake();
 lockPortrait();
-startGPS();
+startGPS("initial");
 
 
 </script>
