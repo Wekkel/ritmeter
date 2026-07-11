@@ -232,6 +232,14 @@ body[data-presentation="map"][data-dragged="yes"] #r-recenter{display:grid}
 #r-zoom{display:none}
 body[data-presentation="map"] #r-zoom{display:flex}
 
+/* 2D/3D-knop: tekstlabel in de fab */
+#viewBtn{font-family:"Chakra Petch",sans-serif;font-weight:700;
+  font-size:calc(13px * var(--ui));letter-spacing:.04em}
+
+/* noord-vast-knop: alleen in kaart-stand én 2D-modus */
+#northBtn{display:none}
+body[data-presentation="map"][data-viewmode="2d"] #northBtn{display:grid}
+body[data-northlock="on"] #northBtn{color:var(--amber);border-color:var(--amber)}
 /* nav-info: alleen in kaart-stand tijdens route */
 #r-navinfo{display:none}
 body[data-presentation="map"][data-nav="route"] #r-navinfo{display:flex}
@@ -461,7 +469,8 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 </style>
 </head>
 <body data-presentation="map" data-nav="off" data-overlay="none" data-mirror="off"
-      data-compass="on" data-altitude="off" data-measuring="idle" data-dragged="no">
+      data-compass="on" data-altitude="off" data-measuring="idle" data-dragged="no"
+      data-viewmode="3d" data-northlock="off">
 
 <div id="map"></div>
 
@@ -479,7 +488,11 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
     </button>
     <button id="navBtn" class="fab" aria-label="navigatie">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+    </button>
+    <button id="viewBtn" class="fab" aria-label="2D/3D-weergave">3D</button>
+    <button id="northBtn" class="fab" aria-label="noorden vastzetten">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6l3 8-3-2-3 2z" fill="currentColor" stroke="none"/></svg>
     </button>
   </div>
 
@@ -719,6 +732,12 @@ let digitColor   = LS.getItem("rm_color")   || "amber";
 let dimVal       = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
 let vehicle      = LS.getItem("rm_vehicle") || "bike";    // ALLEEN routeprofiel
 let lang         = LS.getItem("rm_lang")    || "nl";
+/* ── Patch 10: 2D/3D-weergave + noord-vast ──────────────────
+   3D = pitch 60, altijd rijrichting-omhoog.
+   2D = pitch 0; noord-vast is optioneel en alleen in 2D effectief. */
+let viewMode  = LS.getItem("rm_viewmode") === "2d" ? "2d" : "3d";   // default 3D
+let northLock = LS.getItem("rm_northlock") === "1";
+const northLocked = () => viewMode === "2d" && northLock;
 
 let mapReady = false, firstFix = false, following = true, followTimer = null;
 
@@ -1741,6 +1760,9 @@ function render(){
   b.dataset.compass      = showCompass  ? "on" : "off";
   b.dataset.altitude     = showAltitude ? "on" : "off";
   b.dataset.dragged      = following ? "no" : "yes";
+  b.dataset.viewmode     = viewMode;
+  b.dataset.northlock    = northLocked() ? "on" : "off";
+  $("viewBtn").textContent = viewMode === "3d" ? "3D" : "2D";
   document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
   document.documentElement.style.setProperty("--dim-opacity", dimVal);
 
@@ -2181,6 +2203,19 @@ function drawFollowCamera(now){
 
   const prevDraw = cameraControl.lastDraw;
   cameraControl.lastDraw = now;
+
+  /* Noord-vast (alleen 2D): bearing hard op 0. De smoothing-state
+     wordt meegezet zodat het loslaten van de lock later zonder
+     sprong vanaf 0° verder filtert. Gaat bewust vóór stationary. */
+  if (northLocked()){
+    bearingState.camera = 0;
+    bearingState.lastCameraPerf = now;
+    map.jumpTo({
+      center:[motion.pos.lon, motion.pos.lat],
+      bearing:0
+    });
+    return;
+  }
 
   /* Camerakoers is bewust rustiger dan markerkoers.
      De driehoek mag dus een bocht eerder tonen terwijl de horizon
@@ -2817,7 +2852,7 @@ function ensureMotionLoop(){
 function initMap(lon, lat){
   map = new maplibregl.Map({
     container:"map", style:STYLE,
-    center:[lon,lat], zoom:17, pitch:60, bearing:0,
+    center:[lon,lat], zoom:17, pitch:viewMode === "3d" ? 60 : 0, bearing:0,
     attributionControl:{compact:true}, fadeDuration:0
   });
   map.touchZoomRotate.disableRotation();
@@ -2898,12 +2933,12 @@ function resumeFollow(){
       return {lat:q.lat, lon:q.lng};
     })();
 
-        const resumeBearing =
-      bearingState.camera ??
+       const resumeBearing = northLocked() ? 0 :
+      (bearingState.camera ??
       bearingState.marker ??
       motion.bearing ??
       lastBearing ??
-      map.getBearing();
+      map.getBearing());
 
     map.jumpTo({
       center:[p.lon,p.lat],
@@ -3740,6 +3775,48 @@ function zoomMapBy(delta){
 
 $("zoomIn").onclick  = () => zoomMapBy(1);
 $("zoomOut").onclick = () => zoomMapBy(-1);
+
+/* ── Patch 10: 2D/3D-wissel & noord-vast ────────────────────
+   Eenmalige overgangsanimatie; het doorlopende bearinggedrag zit
+   volledig in drawFollowCamera()/resumeFollow() via northLocked(). */
+function applyViewMode(){
+  if (!map || !mapReady) return;
+
+  /* easeTo beschermen tegen de follow-camera: cameraWriteBlocked()
+     ziet isEasing(); de button-zoom-blokkade dekt de aanloop. */
+  blockCameraForButtonZoom();
+
+  const pitch = viewMode === "3d" ? 60 : 0;
+  const bearing = northLocked()
+    ? 0
+    : (
+        bearingState.camera ??
+        bearingState.marker ??
+        motion.bearing ??
+        lastBearing ??
+        map.getBearing()
+      );
+
+  if (northLocked()){
+    bearingState.camera = 0;
+  }
+
+  map.easeTo({ pitch, bearing, duration:400 });
+}
+
+$("viewBtn").onclick = () => {
+  viewMode = viewMode === "3d" ? "2d" : "3d";
+  LS.setItem("rm_viewmode", viewMode);
+  applyViewMode();
+  render();
+};
+
+$("northBtn").onclick = () => {
+  northLock = !northLock;
+  LS.setItem("rm_northlock", northLock ? "1" : "0");
+  applyViewMode();
+  render();
+};
 
 /* ── scherm aanhouden ────────────────────────────────────── */
 /* ── scherm aanhouden ────────────────────────────────────────
