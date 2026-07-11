@@ -1835,6 +1835,12 @@ function applyMapPadding(){
     const bottom = panelOpen ? Math.round(innerHeight*0.40) : (tripH ? tripH + navH + 22 : navH + 120);
     pad = { top, bottom, left:24, right:24 };
   }
+  /* Patch 10b: bij noord-vast staat de marker gecentreerd in het
+     zichtbare kaartvlak i.p.v. onderin, zodat er bij zuidwaarts
+     rijden ook kaart vóór je zichtbaar blijft. */
+  if (state.presentation === "map" && northLocked()){
+    pad.top = pad.bottom;
+  }
   map.setPadding(pad);
 }
 
@@ -3808,6 +3814,7 @@ $("viewBtn").onclick = () => {
   viewMode = viewMode === "3d" ? "2d" : "3d";
   LS.setItem("rm_viewmode", viewMode);
   applyViewMode();
+  applyMapPadding();
   render();
 };
 
@@ -3815,6 +3822,7 @@ $("northBtn").onclick = () => {
   northLock = !northLock;
   LS.setItem("rm_northlock", northLock ? "1" : "0");
   applyViewMode();
+  applyMapPadding();
   render();
 };
 
