@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.1.6";                 // ← bump bij wijziging van shell of deze worker - 2d/3d toggle and north lock and update map padding logic
+const VERSION = "1.1.7";                 // ← bump bij wijziging van shell of deze worker - 2d/3d toggle and north lock and update map padding logic
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
