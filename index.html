@@ -3810,19 +3810,22 @@ function applyViewMode(){
   map.easeTo({ pitch, bearing, duration:400 });
 }
 
+/* Volgorde is essentieel: setPadding() is intern een jumpTo en zou
+   een direct daarna gestarte easeTo NIET storen, maar andersom wél —
+   dus eerst padding, dan de pitch/bearing-animatie. */
 $("viewBtn").onclick = () => {
   viewMode = viewMode === "3d" ? "2d" : "3d";
   LS.setItem("rm_viewmode", viewMode);
-  applyViewMode();
   applyMapPadding();
+  applyViewMode();
   render();
 };
 
 $("northBtn").onclick = () => {
   northLock = !northLock;
   LS.setItem("rm_northlock", northLock ? "1" : "0");
-  applyViewMode();
   applyMapPadding();
+  applyViewMode();
   render();
 };
 
