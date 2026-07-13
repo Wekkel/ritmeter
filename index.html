@@ -2150,20 +2150,31 @@ const cameraControl = {
   buttonZoomUntil:0,
   lastDraw:0,
   gestureEndTimer:0,
-  buttonZoomTimer:0
+  buttonZoomTimer:0,
+  /* Patch 11: actieve pointers op het kaartcanvas. Zolang deze set
+     niet leeg is, mag de camerablokkade niet worden opgeheven. */
+  pointers:new Set(),
+  lastTouchBlockLog:0
 };
-
+   
 function beginCameraInteraction(){
   clearTimeout(cameraControl.gestureEndTimer);
   cameraControl.interactionActive = true;
 }
 
 function endCameraInteraction(){
+  /* Patch 11: zolang er nog ten minste één vinger op het kaartcanvas
+     staat, blijft de blokkade staan. Dit dekt zowel een pinch waarbij
+     één vinger eerder loslaat, als dragend/zoomend-events die vóór de
+     laatste pointerup binnenkomen. De release volgt dan vanzelf via
+     de laatste pointerup/pointercancel op window. */
+  if (cameraControl.pointers.size > 0) return;
+
   clearTimeout(cameraControl.gestureEndTimer);
 
   /* Korte grace period voorkomt dat de follow-camera al in hetzelfde
      touch-einde terugschrijft terwijl MapLibre de gesture afrondt. */
-  cameraControl.gestureEndTimer = setTimeout(() => {
+   cameraControl.gestureEndTimer = setTimeout(() => {
     cameraControl.interactionActive = false;
     cameraControl.lastDraw = 0;
     ensureMotionLoop();
@@ -2862,7 +2873,73 @@ function initMap(lon, lat){
     attributionControl:{compact:true}, fadeDuration:0
   });
   map.touchZoomRotate.disableRotation();
+
+  /* ── Patch 11: vroege camerablokkade ─────────────────────────
+     dragstart/zoomstart vuren pas nádat MapLibre de gesture herkend
+     heeft; in dat herkenningsvenster overschreef de follow-camera
+     elke ~67 ms de opgebouwde pan-delta (jumpTo), waardoor een veeg
+     of pinch niet "pakte". Daarom blokkeren we camera-writes al bij
+     het eerste rauwe touchcontact op het canvas — dezelfde
+     blauwdruk als blockCameraForButtonZoom(): blokkade vóór de
+     camera-actie in plaats van erna.
+     Bewust GEEN suspendFollow() hier: het 10 s pauzeren van follow
+     blijft exclusief aan een echte drag gekoppeld (dragstart-pad).
+     Listeners staan op het canvas zelf; fabs en panelen boven de
+     kaart raken dit pad nooit. Passief: geen preventDefault nodig. */
+  const canvas = map.getCanvas();
+
+  const onCanvasPointerDown = e => {
+    cameraControl.pointers.add(e.pointerId);
+    /* Gethrottlede diagnose: verifieerbaar op de Carluex dat het
+       vroege pad actief wordt. Alleen loggen bij de overgang
+       (blokkade nog niet actief) en max. 1× per 5 s. */
+    if (following && !cameraControl.interactionActive){
+      const now = Date.now();
+      if (now - cameraControl.lastTouchBlockLog > 5000){
+        cameraControl.lastTouchBlockLog = now;
+        diagAdd("camera.touch_block", {
+          pointers:cameraControl.pointers.size
+        });
+      }
+    }
+    beginCameraInteraction();
+  };
+
+  const onWindowPointerEnd = e => {
+    /* Alleen reageren op pointers die wij zelf volgen; pointerups
+       van fabs/panelen (nooit toegevoegd) worden hier genegeerd.
+       Window-niveau vangt ook een vinger die buiten het canvas
+       loslaat. */
+    if (!cameraControl.pointers.delete(e.pointerId)) return;
+    if (cameraControl.pointers.size === 0) endCameraInteraction();
+  };
+
+  if (window.PointerEvent){
+    canvas.addEventListener("pointerdown", onCanvasPointerDown, { passive:true });
+    window.addEventListener("pointerup", onWindowPointerEnd, { passive:true });
+    window.addEventListener("pointercancel", onWindowPointerEnd, { passive:true });
+  } else {
+    /* Fallback voor WebViews zonder Pointer Events (Carluex-
+       verzekering). Door de feature-check kan nooit dubbel worden
+       afgehandeld. Touch events hebben geen pointerId; we houden de
+       blokkade simpelweg aan tot álle vingers los zijn
+       (e.touches.length === 0) en maken dan de set leeg — lekvrij,
+       want all-fingers-up ruimt altijd volledig op. */
+    canvas.addEventListener("touchstart", () => {
+      cameraControl.pointers.add("touch");
+      beginCameraInteraction();
+    }, { passive:true });
+    const onWindowTouchEnd = e => {
+      if (e.touches && e.touches.length) return;
+      cameraControl.pointers.clear();
+      endCameraInteraction();
+    };
+    window.addEventListener("touchend", onWindowTouchEnd, { passive:true });
+    window.addEventListener("touchcancel", onWindowTouchEnd, { passive:true });
+  }
+
   map.setPadding({ top: Math.round(innerHeight * .58) });
+   
   const el = document.createElement("div");
   el.className = "me";
   el.innerHTML = `<svg viewBox="0 0 30 30"><path d="M15 3 L25 27 L15 21 L5 27 Z" fill="#FFB300" stroke="#0B0F14" stroke-width="1.5"/></svg>`;
@@ -3909,8 +3986,17 @@ document.addEventListener("visibilitychange", () => {
       motion.raf = 0;
     }
     motion.lastDraw = 0;
+
+    /* Patch 11: een touch die middenin door een app-switch wordt
+       afgebroken mag nooit een permanent geblokkeerde camera
+       achterlaten. pointercancel dekt de meeste OS-afbrekingen;
+       dit is het vangnet voor de rest. De set eerst legen zodat de
+       release-guard in endCameraInteraction() niet blokkeert. */
+    cameraControl.pointers.clear();
+    endCameraInteraction();
   }
 });
+   
 /* ── rotatie vergrendelen op portret ─────────────────────── */
 async function lockPortrait(){
   try{ if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("portrait"); }
