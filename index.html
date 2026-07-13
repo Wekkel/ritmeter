@@ -890,6 +890,12 @@ const NL_BOX = { latMin:50.6, latMax:53.7, lonMin:3.2, lonMax:7.4 };
 const inNL = (lat, lon) => lat != null && lat >= NL_BOX.latMin && lat <= NL_BOX.latMax
                                        && lon >= NL_BOX.lonMin && lon <= NL_BOX.lonMax;
 let isPaused = false, zeroSince = null;
+/* ── Patch 12: plausibiliteitsfilter snelheid ────────────────
+   lastM/lastTs: laatste geaccepteerde (gefilterde) snelheids-
+   sample, referentie voor de versnellingsclamp (laag 1) én de
+   bevestigingseis voor trip.max (laag 3). lastDiagAt: gedeelde
+   throttle voor de diagnose-events van dit filter. */
+const spdF = { lastM:null, lastTs:0, lastDiagAt:0 };
 
 /* ── helpers ─────────────────────────────────────────────── */
 const R = 6371000;
@@ -3185,12 +3191,84 @@ function onFix(pos){
   fixBuf.push({ t:ts, lat:c.latitude, lon:c.longitude, acc });
   while (fixBuf.length && ts - fixBuf[0].t > 12000) fixBuf.shift();
 
+ /* ── Patch 12: plausibiliteitsfilter snelheid ──────────────
+     Incidentele Doppler-glitches (multipath: viaducten, geluids-
+     schermen) tilden via de EMA (alpha tot 0,60) dispSpeed en
+     daarmee trip.max naar fysiek onmogelijke waarden. Drie lagen,
+     bewust VÓÓR de EMA — alphaFor en de EMA zelf blijven ongemoeid:
+     laag 2 (kruisvalidatie Doppler↔positie) en laag 1
+     (versnellingsclamp) hier; laag 3 (bevestigingseis trip.max)
+     in het tripafstand-blok. */
   let m = (c.speed != null && !isNaN(c.speed) && c.speed >= 0) ? c.speed : null;
-  if (m === null && fixBuf.length > 1){
+
+  /* Positie-afgeleide snelheid over de bestaande ≥3 s-basislijn.
+     Voorheen alleen fallback; nu altijd berekend zodat hij ook
+     als kruisvalidatie naast native speed kan dienen. Alleen
+     "reliable" met voldoende basis: ≥2,5 s, ≥3 bufferpunten en
+     een referentiefix met acc ≤ 30 m (dekt net-gestart, na
+     accuracy-bridging en dunne buffers). */
+  let mPos = null, mPosReliable = false;
+  if (fixBuf.length > 1){
     let ref = fixBuf[0];
     for (const f of fixBuf) if (ts - f.t >= 3000) ref = f;
-    const dt = (ts - ref.t) / 1000;
-    if (dt > 0.8) m = hv(ref, {lat:c.latitude, lon:c.longitude}) / dt;
+    const dtBase = (ts - ref.t) / 1000;
+    if (dtBase > 0.8){
+      mPos = hv(ref, {lat:c.latitude, lon:c.longitude}) / dtBase;
+      mPosReliable = dtBase >= 2.5 && fixBuf.length >= 3 &&
+                     Number.isFinite(ref.acc) && ref.acc <= 30;
+    }
+  }
+
+  if (m === null){
+    m = mPos;                                  // bestaand fallbackgedrag
+  } else if (mPosReliable && m > 1.3 * mPos && m - mPos > 3){
+    /* Laag 2 — Doppler wantrouwen: native speed die de positie-
+       afgeleide snelheid ruim overschrijdt is vrijwel zeker een
+       multipath-glitch. Adoptie van mPos is per constructie altijd
+       neerwaarts (voorwaarde impliceert mPos < m), dus een door
+       een positieshift opgeblazen mPos kan m nooit verhógen. */
+    if (Date.now() - spdF.lastDiagAt >= 10000){
+      spdF.lastDiagAt = Date.now();
+      diagAdd("speed.doppler_distrust", {
+        native:+m.toFixed(2), positional:+mPos.toFixed(2)
+      });
+    }
+    m = mPos;
+  }
+
+  /* Laag 1 — fysische versnellingsclamp t.o.v. de vorige
+     geaccepteerde sample. Omhoog max. 4 m/s², omlaag 10 m/s²
+     (noodstops zijn echt). Clampen i.p.v. verwerpen: bij echte
+     aanhoudende snelheid haalt de meter binnen 1–2 fixes in.
+     De dt-schaling maakt lange fix-gaten vanzelf clamp-vrij. */
+  if (m !== null && spdF.lastM != null){
+    const dtRef = (ts - spdF.lastTs) / 1000;
+    if (dtRef > 0){
+      const up   = spdF.lastM + 4  * dtRef;
+      const down = spdF.lastM - 10 * dtRef;
+      if (m > up || m < down){
+        const clamped = Math.max(0, Math.min(up, Math.max(down, m)));
+        if (Date.now() - spdF.lastDiagAt >= 10000){
+          spdF.lastDiagAt = Date.now();
+          diagAdd("speed.clamped", {
+            raw:+m.toFixed(2), clamped:+clamped.toFixed(2),
+            dt:+dtRef.toFixed(2)
+          });
+        }
+        m = clamped;
+      }
+    }
+  }
+
+  /* Laag 3 (voorbereiding) — bevestigde snelheid: het minimum van
+     de twee laatste geaccepteerde samples. trip.max kan daardoor
+     alleen stijgen als twee opeenvolgende fixes boven het oude
+     maximum liggen; één spike-fix haalt het per constructie nooit. */
+  let mConfirmed = null;
+  if (m !== null){
+    mConfirmed = spdF.lastM == null ? null : Math.min(spdF.lastM, m);
+    spdF.lastM = m;
+    spdF.lastTs = ts;
   }
 
    /* Stationary state wordt bepaald uit meerdere recente fixes.
@@ -3206,8 +3284,16 @@ function onFix(pos){
     if (dispSpeed < .35){
       dispSpeed = 0;
     }
+
+    /* Patch 12: tijdens bevestigde stilstand een verse nul-
+       referentie voor de versnellingsclamp, zodat wegrijden niet
+       tegen een verouderde snelheid wordt geclampt. 4 m/s² vanaf 0
+       geeft de eerstvolgende fix ruim voldoende snelheid (≈14 km/u
+       bij 1 Hz) om ook de stationary-exit (1,65 m/s) te halen. */
+    spdF.lastM = 0;
+    spdF.lastTs = ts;
   } else if (m !== null){
-    if (m < .6){
+     if (m < .6){
       m = 0;
     }
 
@@ -3310,7 +3396,12 @@ function onFix(pos){
       const dt = (ts - lastPos.t) / 1000;
       if (d > Math.min(acc, 12) * .6 && (dt <= 0 || d/dt < 70)){
         trip.dist += d;
-        if (dispSpeed > trip.max) trip.max = dispSpeed;
+        /* Patch 12 (laag 3): trip.max alleen verhogen wanneer twee
+           opeenvolgende geaccepteerde, gefilterde samples boven het
+           oude maximum liggen (mConfirmed = min van beide). Bewust
+           op basis van m i.p.v. dispSpeed: de EMA draagt een spike
+           anders nog 2–3 fixes mee het maximum in. */
+        if (mConfirmed != null && mConfirmed > trip.max) trip.max = mConfirmed;
         lastPos = { ...here, t:ts };
       } else if (d > 200){
         tripLoss.glitchDropM += d;
