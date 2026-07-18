@@ -511,7 +511,12 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
      top = 4 × (fab + gap) lijnt exact uit met de 2D/3D-knop
      (⋯, set, hist, nav, 2D/3D = posities 0–4). Zichtbaarheid
      blijft volledig bij de bestaande body[data-*]-regel. */
-  #r-controls{position:relative}
+ /* Vaste railhoogte van één fab: de uitgeklapte knoppen hangen
+     als overflow onder het grid-item en tellen niet mee in de
+     rijhoogtes. Rijen 1–2 worden zo uitsluitend door status en
+     kompas bepaald — de rechterkolom staat vast, rail open of
+     dicht. Knoppen in overflow blijven gewoon klikbaar. */
+  #r-controls{position:relative;height:var(--fab)}
   #northBtn{position:absolute;left:calc(100% + 10px);
     top:calc(4 * (var(--fab) + 10px))}
 
