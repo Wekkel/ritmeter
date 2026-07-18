@@ -516,7 +516,11 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
      rijhoogtes. Rijen 1–2 worden zo uitsluitend door status en
      kompas bepaald — de rechterkolom staat vast, rail open of
      dicht. Knoppen in overflow blijven gewoon klikbaar. */
+ /* height beperkt het grid-item tot één fab (rechterkolom-stabiliteit);
+     flex-shrink:0 verbiedt de flex-container de knoppen in die hoogte
+     samen te persen — ze hangen dan als echte overflow eronder. */
   #r-controls{position:relative;height:var(--fab)}
+  #r-controls .fab{flex-shrink:0}
   #northBtn{position:absolute;left:calc(100% + 10px);
     top:calc(4 * (var(--fab) + 10px))}
 
