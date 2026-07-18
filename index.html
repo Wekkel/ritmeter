@@ -508,7 +508,13 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 
   /* DE kernregel: wrapper wordt flex-kolom. Wint van de
      display:contents-basisregel omdat dit blok later staat. */
-  #r-island{display:flex;flex-direction:column;align-self:end;justify-self:start}
+  #r-island{grid-area:island;display:flex;flex-direction:column;
+    align-self:end;justify-self:start}
+  /* Basisregels geven de segmenten align-self:start/end mee (grid-
+     eigenschap voor portret/liggend); in deze flex-kolom werkt
+     align-self op de dwarsas en zou het de breedte-stretch breken.
+     Expliciet terug naar stretch: beide segmenten altijd even breed. */
+  #r-speed,#r-trip{align-self:stretch}
 
   /* Bovenste segment: snelheid + eenheid op één regel, alleen
      bovenhoeken rond; trips bovenrand is de scheidslijn. */
