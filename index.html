@@ -121,8 +121,8 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
   border-radius:50%;background:var(--panel);backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);border:1px solid var(--line)}
 #r-compass svg{width:100%;height:100%;display:block}
-#r-compass text{font:700 11px system-ui;fill:var(--muted)}
-#r-compass .n{fill:var(--amber)}
+#r-compass text{font:700 7.5px system-ui;fill:var(--muted)}
+#r-compass .n{font:700 9.5px system-ui;fill:#fff}
 #roseG{transform-origin:30px 30px;transition:transform .6s linear}
 
 /* hoogte & koers */
@@ -484,21 +484,14 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 #notice p{color:var(--muted);line-height:1.5;font-size:15px}
 #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
   color:#1A1200;font-weight:700}
-   /* ═══ LAYOUT C — HEAD-UNIT (Patch 15, variant "maximale kaart") ═══
-   Carluex meet 1440×516@1; telefoons (402@3, 384@2) vallen op breedte
-   én DPR buiten de boot. Staat bewust NÁ Layout B: liggend is de
-   basis, hier alleen de afwijkingen. Zichtbaarheidsregels via
-   body[data-*] blijven volledig gelden; zoomknoppen + zoomlevel-
-   indicator (Patch 9) ongewijzigd, alleen geschaald via --ui. */
+   /* ═══ LAYOUT C — HEAD-UNIT (Patch 17, definitief) ═══════════
+   #r-island (snelheid + tripbalk) is één flex-kolom linksonder,
+   spant rijen 3–5 en kolommen 1–2: linker rand gelijk aan de
+   fabs, geen gap tussen de segmenten, en verticale overlap met
+   de zoom/recenter-rijen zodat alles in 516 px hoogte past. */
 @media (min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx){
   :root{ --ui: 1.7; --speed-size: 40px }
 
-  /* Patch 17: het eiland (#r-island) is één flex-kolom linksonder,
-     spant rijen 3–5 én kolommen 1–2. Dat geeft: (1) linker rand
-     exact gelijk aan de fabs, (2) geen grid-gap tussen de segmenten
-     (flex, gap 0) — het idle-gat kan structureel niet meer bestaan,
-     (3) verticale overlap met de zoom/recenter-rijen zodat het
-     geheel ook in 516 px schermhoogte (Carluex) past. */
   #ui{
     grid-template-columns:auto auto 1fr auto;
     grid-template-rows:auto auto auto 1fr auto;
@@ -510,26 +503,22 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
       "island   island .  navinfo";
   }
 
-  #r-island{display:flex;flex-direction:column;align-self:end;justify-self:start}
-
-  /* Groot-getal is naast de BMW-teller zinloos; de min-rail wordt
-     zo écht alleen ⋯. Zelfde per-layout-precedent als #r-altitude
-     dat in liggend verborgen wordt. */
+  /* Groot-getal is naast de BMW-teller zinloos. */
   #modeBtn{display:none}
 
-/* Bovenste eilandsegment: snelheid + eenheid op één regel.
-     Alleen de bovenhoeken rond; de onderrand vervalt zodat de
-     bovenrand van #r-trip de scheidslijn vormt. Flex-stretch maakt
-     beide segmenten vanzelf exact even breed (min-width:196 van de
-     basisregel geldt, dus idle blijft de Start rit-knop lekker breed). */
+  /* DE kernregel: wrapper wordt flex-kolom. Wint van de
+     display:contents-basisregel omdat dit blok later staat. */
+  #r-island{display:flex;flex-direction:column;align-self:end;justify-self:start}
+
+  /* Bovenste segment: snelheid + eenheid op één regel, alleen
+     bovenhoeken rond; trips bovenrand is de scheidslijn. */
   #r-speed{display:flex;align-items:baseline;justify-content:center;gap:10px;
     padding:12px 18px 8px;text-align:left;box-shadow:none;
     border-radius:var(--radius) var(--radius) 0 0;border-bottom:none}
   #unitBtn{margin:0;padding:0 2px;font-size:15px;letter-spacing:.14em}
 
-  /* Onderste eilandsegment: stats 2×2 + brede knoppenrij.
-     Geen negatieve-marge-hack meer; de flex-kolom sluit naadloos.
-     Overschrijft bewust de fit-content/46vw-regels uit Layout B. */
+  /* Onderste segment: stats 2×2 + brede knoppenrij. width/max-width
+     overschrijven bewust de fit-content/46vw-regels uit Layout B. */
   #r-trip{width:auto;max-width:none;
     border-radius:0 0 var(--radius) var(--radius)}
   #r-trip #stats{grid-template-columns:repeat(2,1fr);justify-content:normal;
@@ -537,11 +526,10 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
   #r-trip .stat b{font-size:calc(15px * var(--ui))}
   #r-trip .btn{padding-top:14px;padding-bottom:14px;font-size:calc(14px * var(--ui))}
 
-  /* Nav-eiland: zelfde vormtaal als het tripeiland (radius i.p.v.
-     pil), rechtsonder en opgetild van de bodem zodat het
-     bodemmidden van de kaart vrij blijft. */
+  /* Nav-eiland: rechts, opgetild van de bodem richting ~3/4
+     schermhoogte. 16vh is de tunable voor de hoogte. */
   #r-navinfo{align-self:end;justify-self:end;border-radius:var(--radius);
-    margin-bottom:calc(14px * var(--ui));
+    margin-bottom:16vh;
     max-width:min(calc(360px * var(--ui)),46vw)}
 }
 </style>
@@ -579,53 +567,11 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 
   <!-- Patch 17: eiland-wrapper. Buiten Layout C display:contents
        (structureel onzichtbaar); in Layout C één flex-kolom. -->
-  <div id="r-island">
+ <div id="r-island">
   <div id="r-speed">
     <div id="speedVal">--</div>
     <button id="unitBtn" aria-label="eenheid">km/u</button>
   </div>
-</div><!-- /#ui -->
-
-  <div id="r-status"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
-
-  <div id="r-compass"><svg viewBox="0 0 60 60">
-    <g id="roseG">
-      <circle cx="30" cy="30" r="24" fill="none" stroke="#22303E"/>
-      <text id="rN" class="n" x="30" y="18" text-anchor="middle">N</text>
-      <text id="rE" x="44" y="34" text-anchor="middle">O</text>
-      <text id="rS" x="30" y="48" text-anchor="middle">Z</text>
-      <text id="rW" x="16" y="34" text-anchor="middle">W</text>
-    </g>
-    <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
-  </svg></div>
-
-  <div id="r-zoom">
-    <div id="zoomLvl" aria-hidden="true"><span id="zoomLvlNum"></span><span class="sub" id="zoomLvlSub"></span></div>
-    <button id="zoomIn" class="fab" aria-label="inzoomen">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-    <button id="zoomOut" class="fab" aria-label="uitzoomen">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>
-    </button>
-  </div>
-
-  <div id="r-altitude">
-    <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
-    <span><span class="lbl" id="lblHdg">koers</span><span id="hdgVal">—</span></span>
-  </div>
-
-  <button id="r-recenter" class="fab" aria-label="centreren">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>
-  </button>
-
-  <div id="r-navinfo">
-    <span class="nf" id="navInfoTxt">—</span>
-    <button id="navRecalc" aria-label="herbereken">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-    </button>
-    <button id="navStopBtn" aria-label="stop navigatie">×</button>
-  </div>
-
   <div id="r-trip">
     <div id="stats">
       <div class="stat"><b id="stDist">0,00</b><span id="stDistU">km</span></div>
@@ -638,7 +584,45 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
       <button id="resetBtn" class="btn" disabled>Reset</button>
     </div>
   </div>
-
+  </div><!-- /#r-island -->
+  <div id="r-status"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
+  <div id="r-compass"><svg viewBox="0 0 60 60">
+    <g id="roseG">
+      <circle cx="30" cy="30" r="24" fill="none" stroke="#22303E"/>
+      <line x1="13" y1="30" x2="47" y2="30" stroke="#3A4854" stroke-width="2"/>
+      <path d="M30 7 L35 30 L25 30 Z" fill="#FF5252"/>
+      <path d="M30 53 L35 30 L25 30 Z" fill="#55636F"/>
+      <circle cx="30" cy="30" r="2.4" fill="#0B0F14" stroke="#3A4854"/>
+      <text id="rN" class="n" x="30" y="20" text-anchor="middle">N</text>
+      <text id="rE" x="49" y="33" text-anchor="middle">O</text>
+      <text id="rS" x="30" y="51" text-anchor="middle">Z</text>
+      <text id="rW" x="11" y="33" text-anchor="middle">W</text>
+    </g>
+    <path d="M30 2 L34 9 L26 9 Z" fill="#FFB300"/>
+  </svg></div>
+  <div id="r-zoom">
+    <div id="zoomLvl" aria-hidden="true"><span id="zoomLvlNum"></span><span class="sub" id="zoomLvlSub"></span></div>
+    <button id="zoomIn" class="fab" aria-label="inzoomen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button id="zoomOut" class="fab" aria-label="uitzoomen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+    </button>
+  </div>
+  <div id="r-altitude">
+    <span><span class="lbl" id="lblAlt">hoogte</span><span id="altVal">—</span></span>
+    <span><span class="lbl" id="lblHdg">koers</span><span id="hdgVal">—</span></span>
+  </div>
+  <button id="r-recenter" class="fab" aria-label="centreren">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>
+  </button>
+  <div id="r-navinfo">
+    <span class="nf" id="navInfoTxt">—</span>
+    <button id="navRecalc" aria-label="herbereken">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <button id="navStopBtn" aria-label="stop navigatie">×</button>
+  </div>
 </div><!-- /#ui -->
 
 <!-- schermvullend tikvlak om uit groot-getal te keren -->
