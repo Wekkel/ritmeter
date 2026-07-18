@@ -78,7 +78,11 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 /* alleen echte bedienelementen vangen aanrakingen op; lege regio's (kompas,
    snelheid, status, de hele linker-/onderstrook) laten ze door naar de kaart */
 .fab,#unitBtn,#r-recenter,#r-trip,#r-navinfo,#navPanel{pointer-events:auto}
-
+/* eiland-wrapper (Patch 17): buiten Layout C structureel onzichtbaar,
+   zodat #r-speed/#r-trip in portret/liggend/groot-getal directe
+   grid-items van #ui blijven (grid-area's werken door) */
+#r-island{display:contents}
+   
 /* ── appearance per regio (look, NIET geometrie/zichtbaarheid) ── */
 .panel{background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border:1px solid var(--line)}
@@ -489,42 +493,45 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 @media (min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx){
   :root{ --ui: 1.7; --speed-size: 40px }
 
-  /* Patch 16: snelheid + tripbalk gestapeld linksonder als één
-     eiland. Beide regio's delen kolom 2 en stretchen naar de
-     kolombreedte → altijd exact even breed, idle én tijdens rit. */
+  /* Patch 17: het eiland (#r-island) is één flex-kolom linksonder,
+     spant rijen 3–5 én kolommen 1–2. Dat geeft: (1) linker rand
+     exact gelijk aan de fabs, (2) geen grid-gap tussen de segmenten
+     (flex, gap 0) — het idle-gat kan structureel niet meer bestaan,
+     (3) verticale overlap met de zoom/recenter-rijen zodat het
+     geheel ook in 516 px schermhoogte (Carluex) past. */
   #ui{
     grid-template-columns:auto auto 1fr auto;
-    grid-template-rows:auto auto auto 1fr auto auto;
+    grid-template-rows:auto auto auto 1fr auto;
     grid-template-areas:
-      "controls .     .  status"
-      "controls .     .  compass"
-      "controls .     .  zoom"
-      "controls .     .  recenter"
-      "controls speed .  ."
-      "controls trip  .  navinfo";
+      "controls .      .  status"
+      "controls .      .  compass"
+      "island   island .  zoom"
+      "island   island .  recenter"
+      "island   island .  navinfo";
   }
+
+  #r-island{display:flex;flex-direction:column;align-self:end;justify-self:start}
 
   /* Groot-getal is naast de BMW-teller zinloos; de min-rail wordt
      zo écht alleen ⋯. Zelfde per-layout-precedent als #r-altitude
      dat in liggend verborgen wordt. */
   #modeBtn{display:none}
 
-  /* Bovenste eilandsegment: snelheid + eenheid op één regel.
+/* Bovenste eilandsegment: snelheid + eenheid op één regel.
      Alleen de bovenhoeken rond; de onderrand vervalt zodat de
-     bovenrand van #r-trip de subtiele scheidslijn vormt. Eigen
-     schaduw uit, anders schijnt die door de naad. */
-  #r-speed{align-self:end;justify-self:stretch;min-width:0;
-    display:flex;align-items:baseline;justify-content:center;gap:10px;
+     bovenrand van #r-trip de scheidslijn vormt. Flex-stretch maakt
+     beide segmenten vanzelf exact even breed (min-width:196 van de
+     basisregel geldt, dus idle blijft de Start rit-knop lekker breed). */
+  #r-speed{display:flex;align-items:baseline;justify-content:center;gap:10px;
     padding:12px 18px 8px;text-align:left;box-shadow:none;
     border-radius:var(--radius) var(--radius) 0 0;border-bottom:none}
   #unitBtn{margin:0;padding:0 2px;font-size:15px;letter-spacing:.14em}
 
   /* Onderste eilandsegment: stats 2×2 + brede knoppenrij.
-     margin-top:-10px compenseert exact de #ui grid-gap zodat de
-     twee segmenten naadloos aansluiten. Overschrijft bewust de
-     fit-content/46vw-regels uit Layout B. */
-  #r-trip{align-self:end;justify-self:stretch;width:auto;max-width:none;
-    margin-top:-10px;border-radius:0 0 var(--radius) var(--radius)}
+     Geen negatieve-marge-hack meer; de flex-kolom sluit naadloos.
+     Overschrijft bewust de fit-content/46vw-regels uit Layout B. */
+  #r-trip{width:auto;max-width:none;
+    border-radius:0 0 var(--radius) var(--radius)}
   #r-trip #stats{grid-template-columns:repeat(2,1fr);justify-content:normal;
     column-gap:calc(14px * var(--ui));row-gap:8px;margin-bottom:10px}
   #r-trip .stat b{font-size:calc(15px * var(--ui))}
@@ -570,10 +577,14 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
     </button>
   </div>
 
+  <!-- Patch 17: eiland-wrapper. Buiten Layout C display:contents
+       (structureel onzichtbaar); in Layout C één flex-kolom. -->
+  <div id="r-island">
   <div id="r-speed">
     <div id="speedVal">--</div>
     <button id="unitBtn" aria-label="eenheid">km/u</button>
   </div>
+</div><!-- /#ui -->
 
   <div id="r-status"><span id="gpsDot"></span><span id="gpsTxt">GPS…</span></div>
 
