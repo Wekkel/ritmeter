@@ -190,6 +190,14 @@ body[data-measuring="paused"] #startBtn.go{background:transparent;color:var(--am
 @keyframes savePulse{
   0%,100%{box-shadow:0 0 0 0 rgba(255,179,0,.45)}
   50%{box-shadow:0 0 0 6px rgba(255,179,0,0)}}
+/* tripbalk contextgevoelig (Patch 14): bij idle geen nul-statistieken
+   en geen (toch al disabled) resetknop — alleen een smalle startstrook.
+   'paused' blijft bewust volledig: daar neem je de opslaan-beslissing
+   op basis van de cijfers. display:none wint hier van elke andere
+   #stats-regel, dus ook de route-compacte hieronder. */
+body[data-measuring="idle"] #stats{display:none}
+body[data-measuring="idle"] #resetBtn{display:none}
+
 /* compactere tripbalk tijdens route (alleen appearance) */
 body[data-nav="route"] #stats{margin-bottom:8px;gap:5px}
 body[data-nav="route"] .stat b{font-size:17px}
@@ -236,9 +244,20 @@ body[data-presentation="map"] #r-zoom{display:flex}
 #viewBtn{font-family:"Chakra Petch",sans-serif;font-weight:700;
   font-size:calc(13px * var(--ui));letter-spacing:.04em}
 
-/* noord-vast-knop: alleen in kaart-stand én 2D-modus */
+/* ── controlstrip (Patch 13) ─────────────────────────────────
+   min = ⋯ + groot-getal; de rest alleen bij data-controls="open".
+   Elke knop heeft precies één winnende regel. */
+body[data-controls="min"] #setBtn,
+body[data-controls="min"] #histBtn,
+body[data-controls="min"] #navBtn,
+body[data-controls="min"] #viewBtn{display:none}
+body[data-controls="open"] #moreBtn{color:var(--amber);border-color:var(--amber)}
+
+/* noord-vast-knop: alleen in kaart-stand, 2D-modus én open rail.
+   Bewust de toon-regel uitgebreid i.p.v. een extra verberg-regel:
+   zo blijft er één winnende regel en geen specificiteitsgevecht. */
 #northBtn{display:none}
-body[data-presentation="map"][data-viewmode="2d"] #northBtn{display:grid}
+body[data-presentation="map"][data-viewmode="2d"][data-controls="open"] #northBtn{display:grid}
 body[data-northlock="on"] #northBtn{color:var(--amber);border-color:var(--amber)}
 /* nav-info: alleen in kaart-stand tijdens route */
 #r-navinfo{display:none}
@@ -461,10 +480,39 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 #notice p{color:var(--muted);line-height:1.5;font-size:15px}
 #notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
   color:#1A1200;font-weight:700}
-   /* Head-unit / CarPlay: groot, vast, lage pixeldichtheid.
-   Carluex meet 1440×516@1; telefoons (402@3, 384@2) vallen op breedte én DPR buiten de boot. */
+   /* ═══ LAYOUT C — HEAD-UNIT (Patch 15, variant "maximale kaart") ═══
+   Carluex meet 1440×516@1; telefoons (402@3, 384@2) vallen op breedte
+   én DPR buiten de boot. Staat bewust NÁ Layout B: liggend is de
+   basis, hier alleen de afwijkingen. Zichtbaarheidsregels via
+   body[data-*] blijven volledig gelden; zoomknoppen + zoomlevel-
+   indicator (Patch 9) ongewijzigd, alleen geschaald via --ui. */
 @media (min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx){
-  :root{ --ui: 1.7 }
+  :root{ --ui: 1.7; --speed-size: 36px }
+
+  #ui{
+    grid-template-columns:auto auto auto 1fr auto;
+    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-areas:
+      "controls .     .    .       status"
+      "controls .     .    .       compass"
+      "controls .     .    .       zoom"
+      "controls .     .    .       recenter"
+      "controls speed trip navinfo navinfo";
+  }
+
+  /* Groot-getal is naast de BMW-teller zinloos; de min-rail wordt
+     zo écht alleen ⋯. Zelfde per-layout-precedent als #r-altitude
+     dat in liggend verborgen wordt. */
+  #modeBtn{display:none}
+
+  /* Snelheid als horizontale pil, linksonder naast de tripbalk.
+     Cijferkleur en .moving-gedrag blijven via de bestaande regels. */
+  #r-speed{align-self:end;justify-self:start;display:flex;align-items:baseline;
+    gap:8px;min-width:0;padding:10px 20px 12px;border-radius:99px;text-align:left}
+  #unitBtn{margin:0;padding:0 2px;font-size:12px;letter-spacing:.14em}
+
+  /* Recenter net boven de onderrand, onder de zoomknoppen. */
+  #r-recenter{align-self:end}
 }
 </style>
 </head>
@@ -478,6 +526,9 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 <div id="ui">
 
   <div id="r-controls">
+    <button id="moreBtn" class="fab" aria-label="meer knoppen">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
     <button id="modeBtn" class="fab" aria-label="groot getal">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
     </button>
@@ -719,9 +770,10 @@ const state = {
   presentation: "map",                       // 'map' | 'big'
   mirror: LS.getItem("rm_mirror") === "1",   // alleen betekenisvol in 'big'
   nav: "off",                                // 'off' | 'search' | 'route' (alleen in map)
-  overlay: "none"                            // 'none' | 'settings' | 'history' | 'detail'
+  overlay: "none",                           // 'none' | 'settings' | 'history' | 'detail'
+  controls: "min"                            // 'min' | 'open' — Patch 13: controlstrip
+                                             // (sessie-only, start altijd opgeruimd)
 };
-
 /* persistente voorkeuren (beïnvloeden inhoud, niet de structuur) */
 const COLORS = { amber:"#FFB300", white:"#E9EEF3", green:"#34E07A" };
 let useMph       = LS.getItem("rm_unit")    === "mph";
@@ -1768,6 +1820,7 @@ function render(){
   b.dataset.dragged      = following ? "no" : "yes";
   b.dataset.viewmode     = viewMode;
   b.dataset.northlock    = northLocked() ? "on" : "off";
+  b.dataset.controls     = state.controls;
   $("viewBtn").textContent = viewMode === "3d" ? "3D" : "2D";
   document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
   document.documentElement.style.setProperty("--dim-opacity", dimVal);
@@ -1825,11 +1878,26 @@ function render(){
 /* kaart-padding uit de werkelijke hoogte van het zichtbare onderpaneel */
 function applyMapPadding(){
   if (!map || !mapReady) return;
+  const headUnit = matchMedia(
+    "(min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx)").matches;
   const land = matchMedia("(orientation: landscape)").matches;
   const tripH = state.presentation === "map" ? ($("r-trip").offsetHeight || 0) : 0;
   const panelOpen = state.presentation === "map" && state.nav === "search";
   let pad;
-  if (land){
+  if (headUnit){
+    /* Patch 15 (Layout C): overzichtsrol — marker ruwweg centraal,
+       vrij van de onderrand-pillen. De noord-vast-regel onderaan
+       (pad.top = pad.bottom) centreert exact; dit is de basis voor
+       3D/koers-modus. */
+    const speedH = state.presentation === "map" ? ($("r-speed").offsetHeight || 0) : 0;
+    const barH = Math.max(tripH, speedH);
+    pad = {
+      top: 64,
+      bottom: (barH ? barH : 44) + 26,
+      left: panelOpen ? Math.min(380, Math.round(innerWidth*0.44)) + 20 : 110,
+      right: 78
+    };
+  } else if (land){
     const left = panelOpen ? Math.min(380, Math.round(innerWidth*0.44)) + 20 : 130;
     pad = { top: Math.round(innerHeight*0.42), bottom: tripH ? tripH + 22 : 60, left, right:60 };
  } else {
@@ -3573,8 +3641,9 @@ function toggleTrip(){
       glitchN:tripLoss.glitchN
     });
   }
-  LS.setItem("rm_trip", JSON.stringify(trip));
+ LS.setItem("rm_trip", JSON.stringify(trip));
   render();
+  setTimeout(applyMapPadding, 60);   // Patch 14: balkhoogte wijzigt bij start/stop
 }
    
 function tripName(start){
@@ -3598,6 +3667,7 @@ async function saveAndReset(){
   try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
   clearPersistedRoute();
   render();
+  setTimeout(applyMapPadding, 60);   // Patch 14: terug naar compacte idle-strook
 }
 
 /* ── geschiedenis (modale overlay) ───────────────────────── */
@@ -3823,14 +3893,38 @@ function syncSettingsUI(){
 }
 
 /* ── bediening (alle handlers: muteer state/voorkeur → render) ── */
-$("modeBtn").onclick = () => { state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60); };
+/* ── controlstrip (Patch 13) ─────────────────────────────────
+   Auto-inklap na 10 s zonder actie (zelfde patroon als
+   suspendFollow). Overlay-openende acties klappen direct in;
+   kaartschakelaars (2D/3D, noord-vast) herstarten alleen de
+   timer zodat je meerdere schakelingen achtereen kunt doen. */
+let controlsTimer = 0;
+function restartControlsTimer(){
+  clearTimeout(controlsTimer);
+  if (state.controls === "open")
+    controlsTimer = setTimeout(() => setControls("min"), 10000);
+}
+function setControls(mode){
+  state.controls = mode;
+  restartControlsTimer();
+  render();
+}
+$("moreBtn").onclick = () => setControls(state.controls === "min" ? "open" : "min");
+
+$("modeBtn").onclick = () => {
+  clearTimeout(controlsTimer); state.controls = "min";   // groot getal verbergt de rail toch
+  state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60);
+};
 $("r-exit").onclick  = () => { state.presentation = "map"; render(); ensureMotionLoop(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); ensureMotionLoop(); }, 60); };
 $("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
 $("unitBtn").onclick  = () => setUnit(!useMph);
 function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); syncSettingsUI(); render(); }
 
-$("setBtn").onclick   = () => { state.overlay = "settings"; render(); };
+$("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render(); };
+  /* TIJDELIJK (meting splitscreen): na de meting verwijderen */
+  $("appVer").textContent = `${innerWidth}×${innerHeight} @${devicePixelRatio}`;
+};
 $("setClose").onclick = () => { state.overlay = "none"; render(); };
 $("settings").onclick = e => { if (e.target === $("settings")){ state.overlay = "none"; render(); } };
 
@@ -3895,7 +3989,7 @@ $("altCalBtn").onclick = () => {
 };
 $("altCalReset").onclick = () => { altOffset = GEOID_NL; LS.removeItem("rm_altoff"); toast(t("alt_reset")); render(); };
 
-$("histBtn").onclick = openHist;
+$("histBtn").onclick = () => { setControls("min"); openHist(); };
 $("histClose").onclick = closeHist;
 $("bakBtn").onclick = backup;
 $("gpxAllBtn").onclick = gpxAll;
@@ -3982,6 +4076,7 @@ function applyViewMode(){
    een direct daarna gestarte easeTo NIET storen, maar andersom wél —
    dus eerst padding, dan de pitch/bearing-animatie. */
 $("viewBtn").onclick = () => {
+  restartControlsTimer();                                // rail open houden bij schakelen
   viewMode = viewMode === "3d" ? "2d" : "3d";
   LS.setItem("rm_viewmode", viewMode);
   applyMapPadding();
@@ -3990,6 +4085,7 @@ $("viewBtn").onclick = () => {
 };
 
 $("northBtn").onclick = () => {
+  restartControlsTimer();                                // rail open houden bij schakelen
   northLock = !northLock;
   LS.setItem("rm_northlock", northLock ? "1" : "0");
   applyMapPadding();
@@ -4528,7 +4624,7 @@ function setVehicle(v){
 }
 
 /* ── event-bindings ──────────────────────────────────────── */
-$("navBtn").onclick     = openNavPanel;
+$("navBtn").onclick     = () => { setControls("min"); openNavPanel(); };
 $("navClose").onclick   = closeNavPanel;
 $("navStart").onclick   = navStartGuidance;
 $("navStopBtn").onclick = navStop;
