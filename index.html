@@ -506,10 +506,21 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
   /* Groot-getal is naast de BMW-teller zinloos. */
   #modeBtn{display:none}
 
+  /* Noord-vast naast de 2D/3D-knop i.p.v. eronder: de open rail
+     blijft 5 knoppen hoog en klapt vrij van het eiland uit.
+     top = 4 × (fab + gap) lijnt exact uit met de 2D/3D-knop
+     (⋯, set, hist, nav, 2D/3D = posities 0–4). Zichtbaarheid
+     blijft volledig bij de bestaande body[data-*]-regel. */
+  #r-controls{position:relative}
+  #northBtn{position:absolute;left:calc(100% + 10px);
+    top:calc(4 * (var(--fab) + 10px))}
+
   /* DE kernregel: wrapper wordt flex-kolom. Wint van de
      display:contents-basisregel omdat dit blok later staat. */
+ /* min-width is de tunable voor de eilandbreedte: beide segmenten
+     stretchen ernaar, dus Start rit wordt navenant breder. */
   #r-island{grid-area:island;display:flex;flex-direction:column;
-    align-self:end;justify-self:start}
+    align-self:end;justify-self:start;min-width:calc(160px * var(--ui))}
   /* Basisregels geven de segmenten align-self:start/end mee (grid-
      eigenschap voor portret/liggend); in deze flex-kolom werkt
      align-self op de dwarsas en zou het de breedte-stretch breken.
