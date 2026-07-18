@@ -3921,7 +3921,7 @@ $("resetBtn").onclick = saveAndReset;
 $("unitBtn").onclick  = () => setUnit(!useMph);
 function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); syncSettingsUI(); render(); }
 
-$("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render(); };
+$("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render();
   /* TIJDELIJK (meting splitscreen): na de meting verwijderen */
   $("appVer").textContent = `${innerWidth}×${innerHeight} @${devicePixelRatio}`;
 };
