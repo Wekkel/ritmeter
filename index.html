@@ -240,9 +240,17 @@ body[data-presentation="map"][data-altitude="on"] #r-altitude{display:flex}
 #r-recenter{display:none}
 body[data-presentation="map"][data-dragged="yes"] #r-recenter{display:grid}
 
-/* zoomknoppen: alleen in kaart-stand (handig op autoschermen zonder pinch) */
+/* zoomknoppen (Patch 18): alleen in kaart-stand én terwijl de
+   tap-chrome zichtbaar is — bewust ook tijdens een actieve rit. */
 #r-zoom{display:none}
-body[data-presentation="map"] #r-zoom{display:flex}
+body[data-presentation="map"][data-chrome="on"] #r-zoom{display:flex}
+
+/* tap-chrome (Patch 18): in idle zonder tik geen tripeiland; de
+   snelheidsmeter verdwijnt alleen als 'altijd tonen' uit staat.
+   Tijdens running/paused blijft het eiland altijd staan. Gated op
+   kaart-stand zodat groot-getal ongemoeid blijft. */
+body[data-presentation="map"][data-measuring="idle"][data-chrome="off"] #r-trip{display:none}
+body[data-presentation="map"][data-speedvis="off"][data-measuring="idle"][data-chrome="off"] #r-speed{display:none}
 
 /* 2D/3D-knop: tekstlabel in de fab */
 #viewBtn{font-family:"Chakra Petch",sans-serif;font-weight:700;
@@ -538,9 +546,13 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 
   /* Bovenste segment: snelheid + eenheid op één regel, alleen
      bovenhoeken rond; trips bovenrand is de scheidslijn. */
-  #r-speed{display:flex;align-items:baseline;justify-content:center;gap:10px;
+ #r-speed{display:flex;align-items:baseline;justify-content:center;gap:10px;
     padding:12px 18px 8px;text-align:left;box-shadow:none;
     border-radius:var(--radius) var(--radius) 0 0;border-bottom:none}
+  /* Patch 18: is het tripsegment verborgen (idle, chrome off), dan
+     staat de snelheidspil solo → volledige hoeken + onderrand terug. */
+  body[data-measuring="idle"][data-chrome="off"] #r-speed{
+    border-radius:var(--radius);border-bottom:1px solid var(--line)}
   #unitBtn{margin:0;padding:0 2px;font-size:15px;letter-spacing:.14em}
 
   /* Onderste segment: stats 2×2 + brede knoppenrij. width/max-width
@@ -562,7 +574,7 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 </head>
 <body data-presentation="map" data-nav="off" data-overlay="none" data-mirror="off"
       data-compass="on" data-altitude="off" data-measuring="idle" data-dragged="no"
-      data-viewmode="3d" data-northlock="off">
+      data-viewmode="3d" data-northlock="off" data-chrome="on" data-speedvis="on">
 
 <div id="map"></div>
 
@@ -735,9 +747,14 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
     </div>
   </div>
 
-  <div class="row">
+ <div class="row">
     <div class="info"><b id="lblCompass"></b><span id="dscCompass"></span></div>
     <button id="compassSw" class="switch" role="switch"></button>
+  </div>
+
+  <div class="row">
+    <div class="info"><b id="lblSpeedVis"></b><span id="dscSpeedVis"></span></div>
+    <button id="speedSw" class="switch" role="switch"></button>
   </div>
 
   <div class="row">
@@ -815,9 +832,12 @@ const state = {
   mirror: LS.getItem("rm_mirror") === "1",   // alleen betekenisvol in 'big'
   nav: "off",                                // 'off' | 'search' | 'route' (alleen in map)
   overlay: "none",                           // 'none' | 'settings' | 'history' | 'detail'
-  controls: "min"                            // 'min' | 'open' — Patch 13: controlstrip
+  controls: "min",                           // 'min' | 'open' — Patch 13: controlstrip
                                              // (sessie-only, start altijd opgeruimd)
+  chrome: "on"                               // 'on' | 'off' — Patch 18: tap-chrome
+                                             // (zichtbaar bij start, fadet na 7 s)
 };
+   
 /* persistente voorkeuren (beïnvloeden inhoud, niet de structuur) */
 const COLORS = { amber:"#FFB300", white:"#E9EEF3", green:"#34E07A" };
 let useMph       = LS.getItem("rm_unit")    === "mph";
@@ -827,6 +847,7 @@ let autoPause    = LS.getItem("rm_apause")  === "1";
 let digitColor   = LS.getItem("rm_color")   || "amber";
 let dimVal       = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
 let vehicle      = LS.getItem("rm_vehicle") || "bike";    // ALLEEN routeprofiel
+let speedAlways  = LS.getItem("rm_speedvis") !== "0";     // Patch 18: default AAN    // ALLEEN routeprofiel
 let lang         = LS.getItem("rm_lang")    || "nl";
 /* ── Patch 10: 2D/3D-weergave + noord-vast ──────────────────
    3D = pitch 60, altijd rijrichting-omhoog.
@@ -849,6 +870,8 @@ const I18N = {
     unit:"Eenheid", unit_d:"Snelheid en afstand",
     vehicle:"Voertuig", vehicle_d:"Bepaalt alleen het routeprofiel voor navigatie",
     compass:"Kompas", compass_d:"Toon de kompasroos in kaart-stand",
+    speedvis:"Snelheid altijd tonen",
+    speedvis_d:"Uit: de snelheidsmeter verschijnt alleen tijdens een rit of na een tik op de kaart",
     altitude:"Hoogte tonen", altitude_d:"Toon de live hoogte-uitlezing (registratie loopt altijd)",
     altcal:"Hoogte ijken", altcal_d:"GPS toont ellipsoïdehoogte; standaard ~43 m omgerekend naar NAP. IJk op een bekende hoogte (bijv. 0 m op het water).",
     alt_ijk:"IJk", alt_std:"Standaard", alt_prompt:"Huidige hoogte in meters:",
@@ -896,6 +919,8 @@ const I18N = {
     unit:"Units", unit_d:"Speed and distance",
     vehicle:"Vehicle", vehicle_d:"Only sets the routing profile for navigation",
     compass:"Compass", compass_d:"Show the compass rose in map mode",
+    speedvis:"Always show speed",
+    speedvis_d:"Off: the speedometer only appears during a trip or after tapping the map",
     altitude:"Show altitude", altitude_d:"Show the live altitude readout (logging always runs)",
     altcal:"Calibrate altitude", altcal_d:"GPS shows ellipsoidal height; ~43 m is converted to NAP by default. Calibrate to a known height (e.g. 0 m on the water).",
     alt_ijk:"Set", alt_std:"Default", alt_prompt:"Current height in metres:",
@@ -1864,7 +1889,9 @@ function render(){
   b.dataset.dragged      = following ? "no" : "yes";
   b.dataset.viewmode     = viewMode;
   b.dataset.northlock    = northLocked() ? "on" : "off";
-  b.dataset.controls     = state.controls;
+ b.dataset.controls     = state.controls;
+  b.dataset.chrome       = state.chrome;
+  b.dataset.speedvis     = speedAlways ? "on" : "off";
   $("viewBtn").textContent = viewMode === "3d" ? "3D" : "2D";
   document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
   document.documentElement.style.setProperty("--dim-opacity", dimVal);
@@ -3712,8 +3739,12 @@ async function saveAndReset(){
   resetTripLoss();
   try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
   clearPersistedRoute();
+  /* Patch 18: chrome uit vóór de padding-hermeting, anders wordt de
+     tijdelijk zichtbare Start rit-strook meegemeten. */
+  clearTimeout(chromeTimer);
+  state.chrome = "off";
   render();
-  setTimeout(applyMapPadding, 60);   // Patch 14: terug naar compacte idle-strook
+  setTimeout(applyMapPadding, 60);   // Patch 14: terug naar idle
 }
 
 /* ── geschiedenis (modale overlay) ───────────────────────── */
@@ -3895,6 +3926,7 @@ function applyLang(){
   $("lblUnit").textContent = t("unit");         $("dscUnit").textContent = t("unit_d");
   $("lblVeh").textContent = t("vehicle");       $("dscVeh").textContent = t("vehicle_d");
   $("lblCompass").textContent = t("compass");   $("dscCompass").textContent = t("compass_d");
+  $("lblSpeedVis").textContent = t("speedvis"); $("dscSpeedVis").textContent = t("speedvis_d");
   $("lblAltitude").textContent = t("altitude"); $("dscAltitude").textContent = t("altitude_d");
   $("lblAltCal").textContent = t("altcal");     $("dscAltCal").textContent = t("altcal_d");
   $("altCalBtn").textContent = t("alt_ijk");    $("altCalReset").textContent = t("alt_std");
@@ -3928,6 +3960,7 @@ function syncSettingsUI(){
   $("unitKm").classList.toggle("on", !useMph);
   $("unitMi").classList.toggle("on",  useMph);
   $("compassSw").classList.toggle("on", showCompass);
+  $("speedSw").classList.toggle("on", speedAlways);
   $("altSw").classList.toggle("on", showAltitude);
   $("mirrorSw").classList.toggle("on", state.mirror);
   $("apSw").classList.toggle("on", autoPause);
@@ -3956,6 +3989,20 @@ function setControls(mode){
   render();
 }
 $("moreBtn").onclick = () => setControls(state.controls === "min" ? "open" : "min");
+
+/* ── tap-chrome (Patch 18) ──────────────────────────────────
+   Eén tik op de kaart maakt zoomknoppen + Start rit 7 s zichtbaar.
+   Listener op de #map-container (niet het canvas): werkt al vóór
+   de eerste GPS-fix, taps op fabs/panelen raken hem nooit, en een
+   pinch begint met pointerdown zodat de zoomknoppen/-indicator er
+   al staan vóór het zoom-event. Los van de camerablokkade (P11). */
+let chromeTimer = 0;
+function chromePoke(){
+  clearTimeout(chromeTimer);
+  chromeTimer = setTimeout(() => { state.chrome = "off"; render(); }, 7000);
+  if (state.chrome !== "on"){ state.chrome = "on"; render(); }
+}
+$("map").addEventListener("pointerdown", chromePoke, { passive:true });
 
 $("modeBtn").onclick = () => {
   clearTimeout(controlsTimer); state.controls = "min";   // groot getal verbergt de rail toch
@@ -4016,6 +4063,7 @@ $("diagClearBtn").onclick = () => {
 $("langNL").onclick = () => { lang = "nl"; LS.setItem("rm_lang", lang); applyLang(); };
 $("langEN").onclick = () => { lang = "en"; LS.setItem("rm_lang", lang); applyLang(); };
 $("compassSw").onclick = () => { showCompass = !showCompass; LS.setItem("rm_compass", showCompass?"1":"0"); syncSettingsUI(); render(); };
+$("speedSw").onclick = () => { speedAlways = !speedAlways; LS.setItem("rm_speedvis", speedAlways?"1":"0"); syncSettingsUI(); render(); };
 $("altSw").onclick = () => { showAltitude = !showAltitude; LS.setItem("rm_altitude", showAltitude?"1":"0"); syncSettingsUI(); render(); };
 $("mirrorSw").onclick = () => { state.mirror = !state.mirror; LS.setItem("rm_mirror", state.mirror?"1":"0"); syncSettingsUI(); render(); };
 $("apSw").onclick = () => { autoPause = !autoPause; LS.setItem("rm_apause", autoPause?"1":"0"); syncSettingsUI(); render(); };
@@ -4087,8 +4135,8 @@ function zoomMapBy(delta){
   });
 }
 
-$("zoomIn").onclick  = () => zoomMapBy(1);
-$("zoomOut").onclick = () => zoomMapBy(-1);
+$("zoomIn").onclick  = () => { chromePoke(); zoomMapBy(1); };
+$("zoomOut").onclick = () => { chromePoke(); zoomMapBy(-1); };
 
 /* ── Patch 10: 2D/3D-wissel & noord-vast ────────────────────
    Eenmalige overgangsanimatie; het doorlopende bearinggedrag zit
@@ -4698,6 +4746,7 @@ if (screen.orientation)
 /* ── start ───────────────────────────────────────────────── */
 applyLang();   // zet teksten + roept syncSettingsUI() + render() aan
 render();
+chromePoke();  // Patch 18: chrome zichtbaar bij start, fadet na 7 s
 applyKeepAwake();
 lockPortrait();
 startGPS("initial");
