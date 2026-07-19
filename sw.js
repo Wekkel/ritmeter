@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.2.0";                 // ← bump bij wijziging van shell of deze worker - fix for oval buttons
+const VERSION = "1.2.0";                 // ← bump bij wijziging van shell of deze worker - start logging and zoom buttons fade away
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
