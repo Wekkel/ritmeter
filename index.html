@@ -77,7 +77,11 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:p
 #ui > *{pointer-events:none;min-width:0}
 /* alleen echte bedienelementen vangen aanrakingen op; lege regio's (kompas,
    snelheid, status, de hele linker-/onderstrook) laten ze door naar de kaart */
-.fab,#unitBtn,#r-recenter,#r-trip,#r-navinfo,#navPanel{pointer-events:auto}
+/* Patch 21: #unitBtn is hier weggehaald — de eenheid wordt uitsluitend
+   in de instellingen omgezet. Zonder pointer-events valt een tik op het
+   eenheidslabel door naar #r-speed (portret: in/uitklappen) of naar de
+   kaart (tap-chrome), precies zoals de rest van het eiland. */
+.fab,#r-recenter,#r-trip,#r-navinfo,#navPanel{pointer-events:auto}
 /* eiland-wrapper (Patch 17): buiten Layout C structureel onzichtbaar,
    zodat #r-speed/#r-trip in portret/liggend/groot-getal directe
    grid-items van #ui blijven (grid-area's werken door) */
@@ -2118,6 +2122,138 @@ function cachedStyle(which){
   return null;
 }
 
+/* ═══ PATCH 21 — NACHTPALET ═════════════════════════
+   dark-matter is bijna zwart en heeft — anders dan liberty — geen
+   fill-extrusion-laag, dus 's nachts verdween de 3D-bebouwing volledig.
+   We hertinten de stijl naar het Google-Maps-nachtpalet en voegen
+   building-3d toe, bóven de wegen en ónder de labels.
+
+   De hertinting gebeurt op het stijl-OBJECT vóór setStyle, niet met
+   setPaintProperty erna: geen flits van bijna-zwart. In localStorage
+   staat de RUWE stijl, dus een paletwijziging hieronder werkt direct
+   bij de volgende start — geen cache wissen.
+
+   Alles hieronder is tunable. Wil je grijs in plaats van blauw: haal de
+   blauwcomponent uit de hexwaarden (bijv. land #2A2A2A, road #3E3E3E). */
+const NIGHT = {
+  land:         "#242F3E",   /* landachtergrond              */
+  water:        "#17263C",
+  park:         "#263C3F",
+  residential:  "#27313F",
+  buildFlat:    "#313E52",   /* 2D-footprint (onder de wegen) */
+  buildEdge:    "#42546F",
+  build3dLow:   "#445674",   /* 3D, laag pand   1.8:1 t.o.v. land */
+  build3dHigh:  "#5F759C",   /* 3D, hoog pand   2.9:1            */
+  road:         "#38414E",
+  roadEdge:     "#212A37",
+  motorway:     "#746855",   /* snelweg, Google-okergeel     */
+  motorwayEdge: "#1F2835",
+  rail:         "#2F3948",
+  roadText:     "#9CA5B3",
+  motorwayText: "#F3D19C",
+  placeText:    "#C9D1DC",
+  waterText:    "#5D7A99",
+  border:       "#4B5563",
+  halo:         "#1B2433"
+};
+
+/* laag-id → paint-overschrijvingen. Alleen kleuren; breedtes, filters en
+   zoomstops blijven van de upstream-stijl. */
+const NIGHT_PAINT = {
+  background:               { "background-color":NIGHT.land },
+  water:                    { "fill-color":NIGHT.water },
+  waterway:                 { "line-color":NIGHT.water },
+  landcover_ice_shelf:      { "fill-color":NIGHT.land },
+  landcover_glacier:        { "fill-color":NIGHT.land },
+  landuse_residential:      { "fill-color":NIGHT.residential },
+  landcover_wood:           { "fill-color":NIGHT.park },
+  landuse_park:             { "fill-color":NIGHT.park },
+  water_name:               { "text-color":NIGHT.waterText, "text-halo-color":NIGHT.water },
+  building:                 { "fill-color":NIGHT.buildFlat, "fill-outline-color":NIGHT.buildEdge },
+  "aeroway-taxiway":        { "line-color":NIGHT.road },
+  "aeroway-runway-casing":  { "line-color":NIGHT.roadEdge },
+  "aeroway-area":           { "fill-color":NIGHT.land },
+  "aeroway-runway":         { "line-color":NIGHT.road },
+  road_area_pier:           { "fill-color":NIGHT.land },
+  road_pier:                { "line-color":NIGHT.land },
+  highway_path:             { "line-color":NIGHT.rail },
+  highway_minor:            { "line-color":NIGHT.road },
+  highway_major_casing:     { "line-color":NIGHT.roadEdge },
+  highway_major_inner:      { "line-color":NIGHT.road },
+  highway_major_subtle:     { "line-color":NIGHT.road },
+  highway_motorway_casing:  { "line-color":NIGHT.motorwayEdge },
+  highway_motorway_inner:   { "line-color":NIGHT.motorway },
+  highway_motorway_subtle:  { "line-color":NIGHT.motorway },
+  railway_transit:          { "line-color":NIGHT.rail },
+  railway_transit_dashline: { "line-color":NIGHT.land },
+  railway_minor:            { "line-color":NIGHT.rail },
+  railway_minor_dashline:   { "line-color":NIGHT.land },
+  railway:                  { "line-color":NIGHT.rail },
+  railway_dashline:         { "line-color":NIGHT.land },
+  highway_name_other:       { "text-color":NIGHT.roadText, "text-halo-color":NIGHT.halo },
+  highway_name_motorway:    { "text-color":NIGHT.motorwayText,
+                              "text-halo-color":NIGHT.motorwayEdge, "text-halo-width":1 },
+  boundary_state:           { "line-color":NIGHT.border },
+  "boundary_country_z0-4":  { "line-color":NIGHT.border },
+  "boundary_country_z5-":   { "line-color":NIGHT.border },
+  place_other:              { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_suburb:             { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_village:            { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_town:               { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_city:               { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_city_large:         { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_state:              { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_country_other:      { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_country_minor:      { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo },
+  place_country_major:      { "text-color":NIGHT.placeText, "text-halo-color":NIGHT.halo }
+};
+
+/* Zelfde vorm als liberty's building-3d, maar met nachtkleuren en een
+   hoogteramp zodat hoge panden oplichten. minzoom 15 i.p.v. 14 houdt het
+   licht voor de head unit; verhoog naar 16 als het gaat schokken. */
+function night3dLayer(){
+  return {
+    id:"building-3d", type:"fill-extrusion",
+    source:"openmaptiles", "source-layer":"building",
+    minzoom:15,
+    /* has-check plus coalesce: zonder render_height zou de interpolate
+       een null binnenkrijgen en een expressiefout geven. */
+    filter:["all", ["!=", ["get","hide_3d"], true], ["has","render_height"]],
+    paint:{
+      "fill-extrusion-color":["interpolate", ["linear"],
+        ["coalesce", ["get","render_height"], 0],
+        0, NIGHT.build3dLow, 60, NIGHT.build3dHigh],
+      "fill-extrusion-height":["coalesce", ["get","render_height"], 0],
+      "fill-extrusion-base":["coalesce", ["get","render_min_height"], 0],
+      "fill-extrusion-opacity":.85
+    }
+  };
+}
+
+function nightify(style){
+  const s = JSON.parse(JSON.stringify(style));       // cache nooit muteren
+  for (const layer of s.layers){
+    const ov = NIGHT_PAINT[layer.id];
+    if (ov) layer.paint = Object.assign({}, layer.paint, ov);
+  }
+  if (!s.layers.some(l => l.type === "fill-extrusion")){
+    /* boven de wegen, onder de labels: highway_name_other is in
+       dark-matter de eerste weglabel-laag. Ontbreekt die, dan achteraan
+       (dan staan panden boven de labels — lelijk, niet fataal). */
+    let at = s.layers.findIndex(l => l.id === "highway_name_other");
+    if (at < 0) at = s.layers.length;
+    s.layers.splice(at, 0, night3dLayer());
+  }
+  return s;
+}
+
+/* Gebruiksklare stijl: dag = ruw, nacht = hertint. null als niet gecached. */
+function themedStyle(which){
+  const raw = cachedStyle(which);
+  if (!raw) return null;
+  return which === "night" ? nightify(raw) : raw;
+}
+
 function loadStyleJSON(which){
   const hit = cachedStyle(which);
   if (hit) return Promise.resolve(hit);
@@ -2139,7 +2275,7 @@ function applyMapTheme(){
   if (mapStyleApplied === want || styleSwitchBusy) return;
   styleSwitchBusy = true;
   loadStyleJSON(want).then(json => {
-    map.setStyle(json, { diff:false });
+    map.setStyle(want === "night" ? nightify(json) : json, { diff:false });
     mapStyleApplied = want;
     diagAdd("theme.style_applied", { theme:want });
     /* De route zit in een eigen source die setStyle weggooit. Pollen
@@ -3199,7 +3335,7 @@ function initMap(lon, lat){
      zodra de stijl binnen is — nooit een blanco kaart door een koude
      start zonder netwerk. */
   applyTheme();
-  const bootStyle = cachedStyle(themeNow);
+  const bootStyle = themedStyle(themeNow);
   map = new maplibregl.Map({
     container:"map", style: bootStyle || STYLE_DAY,
     center:[lon,lat], zoom:17, pitch:viewMode === "3d" ? 60 : 0, bearing:0,
@@ -3994,7 +4130,7 @@ async function openDetail(id){
         new maplibregl.LngLatBounds(coords[0], coords[0]));
       dmapInst = new maplibregl.Map({
         container:"dmap",
-        style: cachedStyle(themeNow) || styleUrl(themeNow),
+        style: themedStyle(themeNow) || styleUrl(themeNow),
         bounds, fitBoundsOptions:{ padding:34 },
         attributionControl:{compact:true}, fadeDuration:0
       });
@@ -4132,6 +4268,7 @@ function applyLang(){
   $("diagClearBtn").textContent = t("diag_clear");
   $("setClose").textContent = t("close");       $("ntcBtn").textContent = t("retry");
   $("unitKm").textContent = I18N[lang].unit_kmh;
+  $("unitMi").textContent = I18N[lang].unit_mph;
   $("histTitle").textContent = t("hist");
   $("lblProfile").textContent = t("profile");
   $("shareBtn").textContent = t("share_gpx");   $("delBtn").textContent = t("del");
@@ -4206,7 +4343,11 @@ $("modeBtn").onclick = () => {
 $("r-exit").onclick  = () => { state.presentation = "map"; render(); ensureMotionLoop(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); ensureMotionLoop(); }, 60); };
 $("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
-$("unitBtn").onclick  = () => setUnit(!useMph);
+/* Patch 21: de km/u- en mph-knoppen in de instellingen hadden nooit een
+   handler — daar zat de bug. #unitBtn in het eiland is nu alleen nog een
+   label. Standaard blijft km/u: useMph is false tenzij rm_unit "mph" is. */
+$("unitKm").onclick = () => setUnit(false);
+$("unitMi").onclick = () => setUnit(true);
 function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); syncSettingsUI(); render(); }
 
 /* ── Patch 19: tik op het snelheidseiland klapt het in/uit ──────
@@ -4214,7 +4355,6 @@ function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh
    heeft #r-speed geen pointer-events en komt deze handler nooit aan
    bod; de media-check is de expliciete grendel. */
 $("r-speed").addEventListener("click", e => {
-  if (e.target.closest("#unitBtn")) return;         // eenheid-knop blijft eenheid-knop
   if (state.presentation !== "map") return;
   if (!matchMedia("(orientation:portrait) and (max-width:699px)").matches) return;
   state.speedPos = state.speedPos === "compact" ? "full" : "compact";
@@ -4224,10 +4364,12 @@ $("r-speed").addEventListener("click", e => {
   applyMapPadding();
 });
 
-$("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render();
-  /* TIJDELIJK (meting splitscreen): na de meting verwijderen */
-  $("appVer").textContent = `${innerWidth}×${innerHeight} @${devicePixelRatio}`;
-};
+/* Patch 21: de tijdelijke resolutiemeting is eruit. #appVer wordt bij
+   het opstarten door de service worker gevuld ("RitMeter v" + versie) en
+   blijft nu staan. Zie ook diagExportObject(), die appVersion hieruit
+   leest. Staat er alleen "RitMeter", dan antwoordt sw.js niet op het
+   "version"-bericht. */
+$("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render(); };
 $("setClose").onclick = () => { state.overlay = "none"; render(); };
 $("settings").onclick = e => { if (e.target === $("settings")){ state.overlay = "none"; render(); } };
 
