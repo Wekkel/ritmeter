@@ -212,8 +212,12 @@ body[data-nav="route"] .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
 #r-exit #exitHint{position:absolute;left:0;right:0;bottom:calc(var(--sab) + 18px);
   text-align:center;color:var(--muted);font-size:13px;letter-spacing:.08em}
 
-/* nachtdimmer: bovenop alles, vangt geen tikken */
+/* Patch 20: de dim-laag is nu thema-gestuurd i.p.v. een schuifregelaar.
+   De UI-chrome is al donker; het thema regelt de KAART (licht/donker)
+   plus dit restdempertje. Tunable: .10 — zet op 0 als je hem niet wil. */
 #dim{position:fixed;inset:0;z-index:65;background:#000;opacity:var(--dim-opacity);pointer-events:none}
+body[data-theme="day"]{--dim-opacity:0}
+body[data-theme="night"]{--dim-opacity:.10}
 
 /* ═══ ZICHTBAARHEID — uitsluitend body[data-*] ═════════════
    Elk eindresultaat wordt door precies één winnende regel
@@ -324,6 +328,43 @@ body[data-overlay="detail"] #detail{display:flex}
   #navPanel{position:fixed;left:0;right:0;bottom:0;
     border-radius:var(--radius) var(--radius) 0 0;border-top:1px solid var(--line);
     transform:translateY(110%)}
+}
+
+/* ═══ PATCH 19 — SNELHEIDSEILAND INKLAPBAAR (alleen portret-smal) ═══
+   max-width:699px sluit Layout C (min-width:700px) hard uit, dus de
+   tabletweergave en de Carluex blijven onaangeroerd; orientation
+   sluit liggend uit. Alles gegate op data-presentation="map" zodat
+   groot-getal zijn eigen geometrie houdt.
+   Tunables: --speed-size (26px) en min-width (= kompasbreedte). */
+@media (orientation:portrait) and (max-width:699px){
+
+  /* het eiland is tikbaar in béide standen; #unitBtn houdt via de
+     handler zijn eigen functie. Let op: hierdoor pant een veeg die
+     óp het eiland begint de kaart niet meer — bewuste ruil. */
+  body[data-presentation="map"] #r-speed{pointer-events:auto}
+
+  /* er komt één rij bij; rechterkolom wordt status → snelheid → kompas */
+  body[data-presentation="map"][data-speedpos="compact"] #ui{
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto auto auto auto 1fr auto auto;
+    grid-template-areas:
+      "controls .        status"
+      "controls .        speed"
+      "controls altitude compass"
+      "controls .        zoom"
+      "controls .        recenter"
+      "navinfo  navinfo  navinfo"
+      "trip     trip     trip";
+  }
+
+  /* --speed-size op het eiland zélf: erft naar #speedVal en raakt de
+     :root-tokens van de andere layouts niet aan. */
+  body[data-presentation="map"][data-speedpos="compact"] #r-speed{
+    --speed-size:26px;
+    justify-self:end;min-width:var(--compass);padding:5px 10px 4px;
+    border-radius:14px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  body[data-presentation="map"][data-speedpos="compact"] #unitBtn{
+    margin:0;padding:1px 0 0;font-size:9.5px;letter-spacing:.12em}
 }
 
 /* ═══ LAYOUT B — LIGGEND (volledige, op zichzelf staande plattegrond) ═══ */
@@ -574,7 +615,8 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
 </head>
 <body data-presentation="map" data-nav="off" data-overlay="none" data-mirror="off"
       data-compass="on" data-altitude="off" data-measuring="idle" data-dragged="no"
-      data-viewmode="3d" data-northlock="off" data-chrome="on" data-speedvis="on">
+      data-viewmode="3d" data-northlock="off" data-chrome="on" data-speedvis="on"
+      data-speedpos="full">
 
 <div id="map"></div>
 
@@ -787,8 +829,10 @@ input[type=range]{accent-color:var(--amber);width:130px;flex:none}
   </div>
 
    <div class="row">
-    <div class="info"><b id="lblDim"></b><span id="dscDim"></span></div>
-    <input type="range" id="dimRange" min="0" max="60" step="5" value="0">
+    <div class="info"><b id="lblTheme"></b><span id="dscTheme"></span></div>
+    <div class="seg">
+      <button id="thDay"></button><button id="thNight"></button><button id="thAuto"></button>
+    </div>
   </div>
 
   <div class="row">
@@ -834,8 +878,11 @@ const state = {
   overlay: "none",                           // 'none' | 'settings' | 'history' | 'detail'
   controls: "min",                           // 'min' | 'open' — Patch 13: controlstrip
                                              // (sessie-only, start altijd opgeruimd)
-  chrome: "on"                               // 'on' | 'off' — Patch 18: tap-chrome
+  chrome: "on",                              // 'on' | 'off' — Patch 18: tap-chrome
                                              // (zichtbaar bij start, fadet na 7 s)
+  /* Patch 19: positie van het snelheidseiland. Alleen portret-smal
+     leest dit; liggend en Layout C negeren het attribuut volledig. */
+  speedPos: LS.getItem("rm_speedpos") === "compact" ? "compact" : "full"
 };
    
 /* persistente voorkeuren (beïnvloeden inhoud, niet de structuur) */
@@ -845,7 +892,11 @@ let showCompass  = LS.getItem("rm_compass") !== "0";      // default AAN
 let showAltitude = LS.getItem("rm_altitude")=== "1";      // default UIT
 let autoPause    = LS.getItem("rm_apause")  === "1";
 let digitColor   = LS.getItem("rm_color")   || "amber";
-let dimVal       = Math.min(.6, Math.max(0, parseFloat(LS.getItem("rm_dim") || "0")));
+/* Patch 20: nachtdimmer vervangen door een dag/nacht-thema.
+   themeMode = wat de gebruiker koos; themeNow = wat er nú geldt. */
+let themeMode    = (m => (m === "day" || m === "night") ? m : "auto")(LS.getItem("rm_theme"));
+let themeNow     = "day";                                 // door applyTheme() gezet
+const SUN_ALT    = -6;      // burgerschemering i.p.v. -0.833 (geometrisch); tunable
 let vehicle      = LS.getItem("rm_vehicle") || "bike";    // ALLEEN routeprofiel
 let speedAlways  = LS.getItem("rm_speedvis") !== "0";     // Patch 18: default AAN    // ALLEEN routeprofiel
 let lang         = LS.getItem("rm_lang")    || "nl";
@@ -879,7 +930,9 @@ const I18N = {
     color:"Kleur cijfers", color_d:"Voor de snelheidsmeter",
     mirror:"Spiegelen", mirror_d:"Spiegelt het grote snelheidsgetal (reflectie in de voorruit)",
     apause:"Auto-pauze", apause_d:"Tijd pauzeert na 5 s stilstand",
-    dim:"Nachtdimmer", dim_d:"Dim de weergave in het donker",
+    theme:"Weergave",
+    theme_d:"Dag = lichte kaart, nacht = donkere kaart. Auto schakelt op zonsopkomst en -ondergang bij je GPS-positie.",
+    th_day:"Dag", th_night:"Nacht", th_auto:"Auto",
     diag:"Diagnose", diag_d:"Deel of wis het begrensde technische log",
     diag_share:"Deel", diag_clear:"Wis",
     diag_shared:"Diagnose gedeeld", diag_downloaded:"Diagnosebestand gemaakt",
@@ -928,7 +981,9 @@ const I18N = {
     color:"Digit colour", color_d:"For the speedometer",
     mirror:"Mirror", mirror_d:"Mirrors the large speed value (windshield reflection)",
     apause:"Auto-pause", apause_d:"Time pauses after 5 s standstill",
-    dim:"Night dimmer", dim_d:"Dim the display in the dark",
+    theme:"Appearance",
+    theme_d:"Day = light map, night = dark map. Auto switches at sunrise and sunset for your GPS position.",
+    th_day:"Day", th_night:"Night", th_auto:"Auto",
     diag:"Diagnostics", diag_d:"Share or clear the bounded technical log",
     diag_share:"Share", diag_clear:"Clear",
     diag_shared:"Diagnostics shared", diag_downloaded:"Diagnostic file created",
@@ -1892,9 +1947,10 @@ function render(){
  b.dataset.controls     = state.controls;
   b.dataset.chrome       = state.chrome;
   b.dataset.speedvis     = speedAlways ? "on" : "off";
+  b.dataset.speedpos     = state.speedPos;   /* Patch 19 */
+  b.dataset.theme        = themeNow;         /* Patch 20: 'day' | 'night' */
   $("viewBtn").textContent = viewMode === "3d" ? "3D" : "2D";
   document.documentElement.style.setProperty("--digit", COLORS[digitColor]);
-  document.documentElement.style.setProperty("--dim-opacity", dimVal);
 
   /* snelheid */
   const sv = $("speedVal");
@@ -1992,8 +2048,130 @@ function applyMapPadding(){
 }
 
 /* ── kaart ───────────────────────────────────────────────── */
-const STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const STYLE_DAY   = "https://tiles.openfreemap.org/styles/liberty";
+const STYLE_NIGHT = "https://tiles.openfreemap.org/styles/dark";
+const STYLE = STYLE_DAY;                 /* behouden voor terugvalpaden */
 let map, marker;
+
+/* ═══ PATCH 20 — DAG/NACHT ═══════════════════════════════════
+   Beide OpenFreeMap-stijlen delen dezelfde vector-tilesource
+   (tiles.openfreemap.org/planet), dus een stijlwissel kost alleen
+   de stijl-JSON + sprite — je tegelcache blijft volledig geldig.
+
+   Offline-vangnet: de stijl-JSON wordt als object opgehaald,
+   gevalideerd en in localStorage bewaard. Mislukt dat, dan blijft de
+   huidige stijl gewoon staan (zichtbaar in het diagnoselog). Nooit
+   een zwarte kaart door een mislukte setStyle. */
+function getSunTimes(lat, lon, date, altitudeDeg){
+  const rad = Math.PI / 180, dayMs = 86400000, J1970 = 2440588, J2000 = 2451545;
+  const toJulian   = d => d.valueOf() / dayMs - 0.5 + J1970;
+  const fromJulian = j => new Date((j + 0.5 - J1970) * dayMs);
+  const e = rad * 23.4397;
+  const eclipticLongitude = M =>
+    M + rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M))
+      + rad * 102.9372 + Math.PI;
+  const J0 = 0.0009;
+  const solarTransitJ = (ds, M, L) => J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+
+  const lw = rad * -lon, phi = rad * lat, d = toJulian(date) - J2000;
+  const n  = Math.round(d - J0 - lw / (2 * Math.PI));
+  const ds = J0 + lw / (2 * Math.PI) + n;
+  const M  = rad * (357.5291 + 0.98560028 * ds);
+  const L  = eclipticLongitude(M);
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const Jnoon = solarTransitJ(ds, M, L);
+  const cosW = (Math.sin(rad * altitudeDeg) - Math.sin(phi) * Math.sin(dec))
+             / (Math.cos(phi) * Math.cos(dec));
+  if (!(cosW >= -1 && cosW <= 1)) return null;      // poolnacht of pooldag
+  const w = Math.acos(cosW);
+  const Jset = solarTransitJ(J0 + (w + lw) / (2 * Math.PI) + n, M, L);
+  return { sunrise: fromJulian(Jnoon - (Jset - Jnoon)), sunset: fromJulian(Jset) };
+}
+
+function effectiveTheme(){
+  if (themeMode === "day" || themeMode === "night") return themeMode;
+  if (lastLat != null && lastLon != null){
+    const s = getSunTimes(lastLat, lastLon, new Date(), SUN_ALT);
+    if (s){
+      const now = Date.now();
+      return (now < s.sunrise.getTime() || now > s.sunset.getTime()) ? "night" : "day";
+    }
+  }
+  /* geen fix (of poolgebied): volg het systeemthema van de head unit */
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day";
+}
+
+const styleJSON = { day:null, night:null };
+const styleKey  = which => which === "night" ? "rm_style_night" : "rm_style_day";
+const styleUrl  = which => which === "night" ? STYLE_NIGHT : STYLE_DAY;
+
+/* Synchroon uit geheugen of localStorage; null als we hem niet hebben. */
+function cachedStyle(which){
+  if (styleJSON[which]) return styleJSON[which];
+  try{
+    const c = JSON.parse(LS.getItem(styleKey(which)));
+    if (c && c.version === 8 && Array.isArray(c.layers) && c.layers.length){
+      styleJSON[which] = c;
+      return c;
+    }
+  }catch(err){}
+  return null;
+}
+
+function loadStyleJSON(which){
+  const hit = cachedStyle(which);
+  if (hit) return Promise.resolve(hit);
+  return fetch(styleUrl(which))
+    .then(res => { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
+    .then(json => {
+      if (!json || json.version !== 8 || !Array.isArray(json.layers) || !json.layers.length)
+        throw new Error("ongeldige stijl");
+      styleJSON[which] = json;
+      try{ LS.setItem(styleKey(which), JSON.stringify(json)); }catch(err){}
+      return json;
+    });
+}
+
+let mapStyleApplied = null, styleSwitchBusy = false;
+function applyMapTheme(){
+  if (!map || !mapReady) return;
+  const want = themeNow;
+  if (mapStyleApplied === want || styleSwitchBusy) return;
+  styleSwitchBusy = true;
+  loadStyleJSON(want).then(json => {
+    map.setStyle(json, { diff:false });
+    mapStyleApplied = want;
+    diagAdd("theme.style_applied", { theme:want });
+    /* De route zit in een eigen source die setStyle weggooit. Pollen
+       i.p.v. op styledata vertrouwen: addSource vóór een volledig
+       geladen stijl gooit een fout. DOM-markers (positie, bestemming)
+       overleven een stijlwissel wel. */
+    let tries = 0;
+    const restore = () => {
+      if (!map) return;
+      if (!map.isStyleLoaded()){
+        if (++tries > 60){ diagAdd("theme.style_slow", { theme:want }); return; }
+        setTimeout(restore, 120); return;
+      }
+      if (nav.coords.length && !map.getSource("nav-route")) drawNavRoute();
+      applyMapPadding();
+    };
+    setTimeout(restore, 120);
+  }).catch(err => {
+    diagAdd("theme.style_failed", {
+      theme:want, error:String((err && err.message) || err) });
+  }).finally(() => { styleSwitchBusy = false; });
+}
+
+function applyTheme(){
+  const next = effectiveTheme();
+  if (next !== themeNow){
+    themeNow = next;
+    diagAdd("theme.switch", { theme:next, mode:themeMode });
+    render();
+  }
+  applyMapTheme();          /* idempotent: doet niets als de stijl al klopt */
+}
 
 /* ── vloeiende visuele positie (30 fps, dead reckoning + foutuitmiddeling) ──
    De ruwe GPS-fix blijft leidend voor ritafstand, logging en off-route-detectie.
@@ -3014,11 +3192,20 @@ function ensureMotionLoop(){
 }
 
 function initMap(lon, lat){
+  /* Patch 20: lastLat/lastLon staan al → de zonberekening klopt.
+     Hebben we de gewenste stijl al in cache, dan start de kaart er
+     direct in (geen witte flits bij een avondstart). Zo niet, dan
+     starten we in de bewezen dagstijl en wisselt applyMapTheme()
+     zodra de stijl binnen is — nooit een blanco kaart door een koude
+     start zonder netwerk. */
+  applyTheme();
+  const bootStyle = cachedStyle(themeNow);
   map = new maplibregl.Map({
-    container:"map", style:STYLE,
+    container:"map", style: bootStyle || STYLE_DAY,
     center:[lon,lat], zoom:17, pitch:viewMode === "3d" ? 60 : 0, bearing:0,
     attributionControl:{compact:true}, fadeDuration:0
   });
+  mapStyleApplied = bootStyle ? themeNow : "day";
   map.touchZoomRotate.disableRotation();
 
   /* ── Patch 11: vroege camerablokkade ─────────────────────────
@@ -3097,6 +3284,7 @@ function initMap(lon, lat){
     mapReady = true;
     applyMapPadding();
     if (nav.coords.length) drawNavRoute();
+    applyTheme();          /* Patch 20: correctie als het thema intussen wisselde */
   });
 
   /* Slepen betekent bewust: gebruiker wil de kaart bekijken.
@@ -3805,7 +3993,9 @@ async function openDetail(id){
       const bounds = coords.reduce((b,c) => b.extend(c),
         new maplibregl.LngLatBounds(coords[0], coords[0]));
       dmapInst = new maplibregl.Map({
-        container:"dmap", style:STYLE, bounds, fitBoundsOptions:{ padding:34 },
+        container:"dmap",
+        style: cachedStyle(themeNow) || styleUrl(themeNow),
+        bounds, fitBoundsOptions:{ padding:34 },
         attributionControl:{compact:true}, fadeDuration:0
       });
       dmapInst.on("load", () => {
@@ -3933,7 +4123,10 @@ function applyLang(){
   $("lblColor").textContent = t("color");       $("dscColor").textContent = t("color_d");
   $("lblMirror").textContent = t("mirror");     $("dscMirror").textContent = t("mirror_d");
   $("lblAP").textContent = t("apause");         $("dscAP").textContent = t("apause_d");
-  $("lblDim").textContent = t("dim");           $("dscDim").textContent = t("dim_d");
+  $("lblTheme").textContent = t("theme");       $("dscTheme").textContent = t("theme_d");
+  $("thDay").textContent   = t("th_day");
+  $("thNight").textContent = t("th_night");
+  $("thAuto").textContent  = t("th_auto");
   $("lblDiag").textContent = t("diag");         $("dscDiag").textContent = t("diag_d");
   $("diagShareBtn").textContent = t("diag_share");
   $("diagClearBtn").textContent = t("diag_clear");
@@ -3967,7 +4160,9 @@ function syncSettingsUI(){
   $("colAmber").classList.toggle("on", digitColor === "amber");
   $("colWhite").classList.toggle("on", digitColor === "white");
   $("colGreen").classList.toggle("on", digitColor === "green");
-  $("dimRange").value = Math.round(dimVal * 100);
+  $("thDay").classList.toggle("on",   themeMode === "day");
+  $("thNight").classList.toggle("on", themeMode === "night");
+  $("thAuto").classList.toggle("on",  themeMode === "auto");
   document.querySelectorAll("#vehSeg button").forEach(b => b.classList.toggle("on", b.dataset.p === vehicle));
 }
 
@@ -4013,6 +4208,21 @@ $("startBtn").onclick = toggleTrip;
 $("resetBtn").onclick = saveAndReset;
 $("unitBtn").onclick  = () => setUnit(!useMph);
 function setUnit(mph){ useMph = mph; LS.setItem("rm_unit", useMph ? "mph" : "kmh"); syncSettingsUI(); render(); }
+
+/* ── Patch 19: tik op het snelheidseiland klapt het in/uit ──────
+   Alleen portret-smal en alleen in kaart-stand. Buiten dat bereik
+   heeft #r-speed geen pointer-events en komt deze handler nooit aan
+   bod; de media-check is de expliciete grendel. */
+$("r-speed").addEventListener("click", e => {
+  if (e.target.closest("#unitBtn")) return;         // eenheid-knop blijft eenheid-knop
+  if (state.presentation !== "map") return;
+  if (!matchMedia("(orientation:portrait) and (max-width:699px)").matches) return;
+  state.speedPos = state.speedPos === "compact" ? "full" : "compact";
+  LS.setItem("rm_speedpos", state.speedPos);
+  chromePoke();                                     // eiland verdwijnt niet onder je vinger
+  render();
+  applyMapPadding();
+});
 
 $("setBtn").onclick   = () => { setControls("min"); state.overlay = "settings"; render();
   /* TIJDELIJK (meting splitscreen): na de meting verwijderen */
@@ -4071,7 +4281,13 @@ $("colAmber").onclick = () => setColor("amber");
 $("colWhite").onclick = () => setColor("white");
 $("colGreen").onclick = () => setColor("green");
 function setColor(c){ digitColor = c; LS.setItem("rm_color", c); syncSettingsUI(); render(); }
-$("dimRange").oninput = e => { dimVal = (+e.target.value)/100; LS.setItem("rm_dim", String(dimVal)); render(); };
+function setTheme(mode){
+  themeMode = mode; LS.setItem("rm_theme", mode);
+  syncSettingsUI(); applyTheme(); render();
+}
+$("thDay").onclick   = () => setTheme("day");
+$("thNight").onclick = () => setTheme("night");
+$("thAuto").onclick  = () => setTheme("auto");
 $("altCalBtn").onclick = () => {
   if (lastAltRaw == null){ toast(t("alt_nofix")); return; }
   const inp = prompt(t("alt_prompt"), String(Math.round(lastAltRaw - altOffset)));
@@ -4744,9 +4960,24 @@ if (screen.orientation)
     () => setTimeout(() => { if (map){ map.resize(); applyMapPadding(); } }, 250));
 
 /* ── start ───────────────────────────────────────────────── */
+applyTheme();  // Patch 20: vóór applyLang, zodat de eerste render het thema al kent
 applyLang();   // zet teksten + roept syncSettingsUI() + render() aan
 render();
 chromePoke();  // Patch 18: chrome zichtbaar bij start, fadet na 7 s
+
+/* Patch 20: elke minuut herijken (alleen in auto), en meeliften op een
+   systeemthemawissel van de head unit zolang er nog geen GPS-fix is. */
+setInterval(() => { if (themeMode === "auto") applyTheme(); }, 60000);
+try{
+  matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => { if (themeMode === "auto") applyTheme(); });
+}catch(err){}
+
+/* Patch 20: de andere stijl vóórladen terwijl er nog netwerk is, zodat
+   de wissel onderweg (tunnel, geen bereik) uit localStorage kan komen. */
+setTimeout(() => {
+  loadStyleJSON(themeNow === "night" ? "day" : "night").catch(() => {});
+}, 8000);
 applyKeepAwake();
 lockPortrait();
 startGPS("initial");
