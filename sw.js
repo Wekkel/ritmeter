@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.3.0";                 // ← Dark and day mode + speed island toggle
+const VERSION = "1.3.1";                 // ← adjusted day-night mode - fix speed toggle
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
