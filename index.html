@@ -4804,7 +4804,9 @@ const nav = {
   coords: [], cum: [], distM: 0, etaS: 0, vAvg: 8,
   remM: 0, remEtaS: 0,
   destMarker: null, lastNear: null,
-  offSince: null, rerouting: false, lastReroute: 0
+  offSince: null, rerouting: false, lastReroute: 0,
+  doneFrac: 0                    /* Patch 24: fractie van de route die al
+                                    gereden is, 0..1 */
 };
 let navHere = null;                  // laatst bekende GPS-positie {lat,lon}
 let geoTimer = null, geoSeq = 0;
@@ -5008,6 +5010,8 @@ function applyRoute(r){
   nav.vAvg = r.etaS > 0 ? r.distM / r.etaS : (SPEED[nav.profile].def/3.6);
   nav.remM = r.distM; nav.remEtaS = r.etaS;
   nav.lastNear = null;
+  nav.doneFrac = 0;              /* Patch 24: nieuwe of herberekende route
+                                    begint bij nul */
 }
 
 /* route ophalen voor de huidige bestemming; toont preview in het paneel */
@@ -5033,20 +5037,63 @@ async function navComputeRoute(){
 }
 
 /* ── route + bestemmingspin op de hoofdkaart ─────────────── */
+/* ═══ PATCH 24 — GEREDEN DEEL GRIJS ══════════════════════════
+   Één bronlijn met een line-gradient, niet twee losse features. De
+   overgang is dan een paint-property die per fix wordt bijgesteld,
+   zonder de geometrie opnieuw op te bouwen.
+
+   Vereist lineMetrics:true op de source; zonder dat kan MapLibre
+   line-progress niet berekenen. line-color blijft als vangnet staan:
+   mocht de gradient niet evalueren, dan is de lijn gewoon weer egaal
+   paars in plaats van zwart.
+   Tunable: de vier kleuren hieronder. */
+const ROUTE_KLEUR = {
+  restLijn:   "#E000FF",   /* nog te rijden */
+  restCasing: "#3A0A33",
+  doneLijn:   "#7C8794",   /* al gereden — leesbaar op licht én donker */
+  doneCasing: "#2B2F36"
+};
+
+/* Alles vóór doneFrac krijgt de done-kleur, daarna de rest-kleur.
+   De klem houdt beide takken bestaan; een stop op exact 0 of 1 zou
+   één van de twee onbereikbaar maken. */
+function routeGradient(done, kleurDone, kleurRest){
+  const p = Math.max(.0001, Math.min(.9999, done || 0));
+  return ["step", ["line-progress"], kleurDone, p, kleurRest];
+}
+
+/* Voortgang op beide lijnlagen zetten. Ook aangeroepen vanuit
+   drawNavRoute(), want een stijlwissel (dag/nacht) gooit de lagen weg
+   en bouwt ze opnieuw op. */
+function applyNavProgress(){
+  if (!map || !mapReady) return;
+  if (!map.getLayer("nav-route-line") || !map.getLayer("nav-route-casing")) return;
+  const f = nav.doneFrac || 0;
+  map.setPaintProperty("nav-route-casing", "line-gradient",
+    routeGradient(f, ROUTE_KLEUR.doneCasing, ROUTE_KLEUR.restCasing));
+  map.setPaintProperty("nav-route-line", "line-gradient",
+    routeGradient(f, ROUTE_KLEUR.doneLijn, ROUTE_KLEUR.restLijn));
+}
+
 function drawNavRoute(){
   if (!map || !mapReady || !nav.coords.length) return;
   const data = { type:"Feature", properties:{},
     geometry:{ type:"LineString", coordinates: nav.coords.map(p => [p.lon, p.lat]) } };
   if (map.getSource("nav-route")) map.getSource("nav-route").setData(data);
   else {
-    map.addSource("nav-route", { type:"geojson", data });
+    map.addSource("nav-route", { type:"geojson", data, lineMetrics:true });
     map.addLayer({ id:"nav-route-casing", type:"line", source:"nav-route",
       layout:{ "line-cap":"round", "line-join":"round" },
-      paint:{ "line-color":"#3A0A33", "line-width":11, "line-opacity":.95 } });
+      paint:{ "line-color":ROUTE_KLEUR.restCasing, "line-width":11, "line-opacity":.95,
+        "line-gradient":routeGradient(nav.doneFrac,
+          ROUTE_KLEUR.doneCasing, ROUTE_KLEUR.restCasing) } });
     map.addLayer({ id:"nav-route-line", type:"line", source:"nav-route",
       layout:{ "line-cap":"round", "line-join":"round" },
-      paint:{ "line-color":"#E000FF", "line-width":6, "line-opacity":.95 } });
+      paint:{ "line-color":ROUTE_KLEUR.restLijn, "line-width":6, "line-opacity":.95,
+        "line-gradient":routeGradient(nav.doneFrac,
+          ROUTE_KLEUR.doneLijn, ROUTE_KLEUR.restLijn) } });
   }
+  applyNavProgress();
   if (nav.dest){
     if (!nav.destMarker){
       const el = document.createElement("div"); el.className = "navDest";
@@ -5111,6 +5158,15 @@ function navOnFix(c){
   nav.remM = Math.max(0, nav.distM - proj.along);
   nav.remEtaS = nav.remM / (nav.vAvg || 8);
 
+  /* Patch 24: voortgang bijwerken. Drempel in meters i.p.v. in fractie,
+     zodat een rit van 5 km en één van 500 km zich hetzelfde gedragen. */
+  if (nav.distM > 0){
+    const f = Math.max(0, Math.min(1, proj.along / nav.distM));
+    if (Math.abs(f - (nav.doneFrac || 0)) * nav.distM > 20){
+      nav.doneFrac = f;
+      applyNavProgress();
+    }
+  }
   /* aankomst: pas melden bij échte nabijheid van de bestemming (niet op projectie) */
   if (nav.dest && hv(navHere, nav.dest) < 30){
     toast(t("nav_arrived"));
