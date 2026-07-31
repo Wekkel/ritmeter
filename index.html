@@ -3367,23 +3367,39 @@ function ensureMotionLoop(){
   motion.raf = requestAnimationFrame(drawMotionFrame);
 }
 
-/* ═══ PATCH 22 — STARTZOOM ═══════════════════════════
-   Zoom 17 klopt bij stilstand maar is onbruikbaar krap als de app start
-   terwijl je al 120 rijdt. De eerste fix draagt meestal al een
-   Doppler-snelheid; die bepaalt het startniveau.
-   Tunable: de vier niveaus en de drempels hieronder. */
+/* ═══ PATCH 23 — STARTZOOM PER WEERGAVE ════════════════
+   Twee tabellen, want 2D en 3D horen bij verschillende voertuigen:
+   2D in de auto (portrait), 3D op de fiets en de brommer. In 3D kijk
+   je door de kanteling veel verder vooruit, dus daar mag hetzelfde
+   zoomgetal krapper staan.
+
+   Elke tabel heeft éigen drempels. Dat is de kern: een brommer van
+   45 km/u hoort in 3D nog bij "stad" (dus 17), terwijl 45 km/u in de
+   2D-tabel al buitenweg is. Zo krijgt fiets/brommer 17 en de auto in
+   3D 14, zonder dat de app hoeft te weten wat voor voertuig het is.
+   Tunable: alles hieronder. */
 const START_ZOOM = {
-  stil:17, stad:16, buitenweg:15.5, snelweg:14,
-  onbekend:16            /* eerste fix zonder Doppler: neutraal beginnen,
-                            niet aannemen dat je stilstaat */
+  "2d": {                                   /* auto, portrait */
+    niveaus: { stil:17, stad:16, buitenweg:15.5, snelweg:9 },
+    grenzen: { stad:10, buitenweg:25, snelweg:85 },
+    onbekend:16
+  },
+  "3d": {                                   /* fiets / brommer, auto bij snelheid */
+    niveaus: { stil:17, stad:17, buitenweg:17, snelweg:14 },
+    grenzen: { stad:10, buitenweg:25, snelweg:50 },
+    onbekend:16
+  }
 };
 const START_ZOOM_SETTLE_MS = 10000;
 
-function zoomForSpeed(kmh){
-  if (!Number.isFinite(kmh) || kmh < 10) return START_ZOOM.stil;
-  if (kmh < 25)  return START_ZOOM.stad;        // jouw drempel van 54
-  if (kmh < 85) return START_ZOOM.buitenweg;
-  return START_ZOOM.snelweg;
+function zoomTabel(mode){ return START_ZOOM[mode === "3d" ? "3d" : "2d"]; }
+
+function zoomForSpeed(kmh, mode){
+  const t = zoomTabel(mode), n = t.niveaus, g = t.grenzen;
+  if (!Number.isFinite(kmh) || kmh < g.stad) return n.stil;
+  if (kmh < g.buitenweg) return n.stad;
+  if (kmh < g.snelweg)   return n.buitenweg;
+  return n.snelweg;
 }
 
 function initMap(lon, lat, speedMs){
@@ -3399,10 +3415,13 @@ function initMap(lon, lat, speedMs){
   /* Patch 22: snelheid van de eerste fix → startzoom. */
   const startKmh = (speedMs != null && !isNaN(speedMs) && speedMs >= 0)
     ? speedMs * 3.6 : NaN;
+  /* viewMode staat al vast (uit localStorage), dus de kaart start
+     meteen op het niveau dat bij deze weergave hoort. */
   const startZoom = Number.isFinite(startKmh)
-    ? zoomForSpeed(startKmh) : START_ZOOM.onbekend;
+    ? zoomForSpeed(startKmh, viewMode) : zoomTabel(viewMode).onbekend;
   diagAdd("zoom.start", {
-    kmh: Number.isFinite(startKmh) ? +startKmh.toFixed(1) : null, zoom:startZoom });
+    kmh: Number.isFinite(startKmh) ? +startKmh.toFixed(1) : null,
+    view:viewMode, zoom:startZoom });
 
   map = new maplibregl.Map({
     container:"map", style: bootStyle || STYLE_DAY,
@@ -3427,12 +3446,15 @@ function initMap(lon, lat, speedMs){
       clearInterval(sampler);
       if (!map || !mapReady || !following) return;
       if (cameraControl.interactionActive) return;
-      const kmh = Math.max(peakKmh, dispSpeed * 3.6);
-      const want = zoomForSpeed(kmh);
+     const kmh = Math.max(peakKmh, dispSpeed * 3.6);
+      /* viewMode hier opnieuw lezen: heb je in die 10 s van 2D naar 3D
+         gewisseld, dan telt de weergave waarin je nu staat. */
+      const want = zoomForSpeed(kmh, viewMode);
       if (Math.abs(map.getZoom() - want) < .1) return;
       blockCameraForButtonZoom();
       map.easeTo({ zoom:want, duration:300 });
-      diagAdd("zoom.start_settled", { kmh:+kmh.toFixed(1), zoom:want });
+      diagAdd("zoom.start_settled", {
+        kmh:+kmh.toFixed(1), view:viewMode, zoom:want });
     }, START_ZOOM_SETTLE_MS);
   }
   map.touchZoomRotate.disableRotation();
