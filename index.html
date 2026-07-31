@@ -3373,16 +3373,16 @@ function ensureMotionLoop(){
    Doppler-snelheid; die bepaalt het startniveau.
    Tunable: de vier niveaus en de drempels hieronder. */
 const START_ZOOM = {
-  stil:17, stad:16, buitenweg:15.5, snelweg:15,
+  stil:17, stad:16, buitenweg:15.5, snelweg:14,
   onbekend:16            /* eerste fix zonder Doppler: neutraal beginnen,
                             niet aannemen dat je stilstaat */
 };
 const START_ZOOM_SETTLE_MS = 10000;
 
 function zoomForSpeed(kmh){
-  if (!Number.isFinite(kmh) || kmh < 15) return START_ZOOM.stil;
-  if (kmh < 55)  return START_ZOOM.stad;        // jouw drempel van 54
-  if (kmh < 100) return START_ZOOM.buitenweg;
+  if (!Number.isFinite(kmh) || kmh < 10) return START_ZOOM.stil;
+  if (kmh < 25)  return START_ZOOM.stad;        // jouw drempel van 54
+  if (kmh < 85) return START_ZOOM.buitenweg;
   return START_ZOOM.snelweg;
 }
 
