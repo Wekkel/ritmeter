@@ -221,7 +221,10 @@ body[data-nav="route"] .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
    plus dit restdempertje. Tunable: .10 — zet op 0 als je hem niet wil. */
 #dim{position:fixed;inset:0;z-index:65;background:#000;opacity:var(--dim-opacity);pointer-events:none}
 body[data-theme="day"]{--dim-opacity:0}
-body[data-theme="night"]{--dim-opacity:.10}
+/* Patch 22: van .10 naar .04. De kaart is nu zelf donker; die extra
+   zwarte laag haalde juist het contrast uit de bebouwingscontouren.
+   Zet op 0 als je hem helemaal niet wilt. */
+body[data-theme="night"]{--dim-opacity:.04}
 
 /* ═══ ZICHTBAARHEID — uitsluitend body[data-*] ═════════════
    Elk eindresultaat wordt door precies één winnende regel
@@ -900,7 +903,16 @@ let digitColor   = LS.getItem("rm_color")   || "amber";
    themeMode = wat de gebruiker koos; themeNow = wat er nú geldt. */
 let themeMode    = (m => (m === "day" || m === "night") ? m : "auto")(LS.getItem("rm_theme"));
 let themeNow     = "day";                                 // door applyTheme() gezet
-const SUN_ALT    = -6;      // burgerschemering i.p.v. -0.833 (geometrisch); tunable
+/* Patch 22: aparte drempels voor 's avonds en 's ochtends. Eerder was
+   dit één waarde (-6°, burgerschemering) en dat viel in juli pas rond
+   22:19 — veel te laat voor in de auto. Hoogte = stand van de zon:
+   positief is boven de horizon, dus eerder.
+
+     +2°  21:16      0°  21:31      -2°  21:46      -4°  22:02
+     +1°  21:23   -0.8°  21:37      -3°  21:54      -6°  22:19
+   (Amstelveen, 30 juli; in december schuift alles mee met de zon.) */
+const SUN_ALT_DUSK = 0;     // nacht gaat in rond zonsondergang
+const SUN_ALT_DAWN = -1;    // dag gaat in net vóór zonsopkomst
 let vehicle      = LS.getItem("rm_vehicle") || "bike";    // ALLEEN routeprofiel
 let speedAlways  = LS.getItem("rm_speedvis") !== "0";     // Patch 18: default AAN    // ALLEEN routeprofiel
 let lang         = LS.getItem("rm_lang")    || "nl";
@@ -2095,10 +2107,15 @@ function getSunTimes(lat, lon, date, altitudeDeg){
 function effectiveTheme(){
   if (themeMode === "day" || themeMode === "night") return themeMode;
   if (lastLat != null && lastLon != null){
-    const s = getSunTimes(lastLat, lastLon, new Date(), SUN_ALT);
-    if (s){
-      const now = Date.now();
-      return (now < s.sunrise.getTime() || now > s.sunset.getTime()) ? "night" : "day";
+    const d = new Date();
+    /* twee aparte berekeningen: de avonddrempel bepaalt wanneer het
+       nacht wordt, de ochtenddrempel wanneer het weer dag wordt. */
+    const dusk = getSunTimes(lastLat, lastLon, d, SUN_ALT_DUSK);
+    const dawn = getSunTimes(lastLat, lastLon, d, SUN_ALT_DAWN);
+    if (dusk && dawn){
+      const now = d.getTime();
+      return (now < dawn.sunrise.getTime() || now > dusk.sunset.getTime())
+        ? "night" : "day";
     }
   }
   /* geen fix (of poolgebied): volg het systeemthema van de head unit */
@@ -2140,8 +2157,8 @@ const NIGHT = {
   water:        "#17263C",
   park:         "#263C3F",
   residential:  "#27313F",
-  buildFlat:    "#313E52",   /* 2D-footprint (onder de wegen) */
-  buildEdge:    "#42546F",
+  buildFlat:    "#3A4A63",   /* 2D-footprint  1.5:1 t.o.v. land   */
+  buildEdge:    "#586D92",   /* contourlijn   2.6:1               */
   build3dLow:   "#445674",   /* 3D, laag pand   1.8:1 t.o.v. land */
   build3dHigh:  "#5F759C",   /* 3D, hoog pand   2.9:1            */
   road:         "#38414E",
@@ -2230,12 +2247,35 @@ function night3dLayer(){
   };
 }
 
+/* Patch 22: een eigen contourlijn. fill-outline-color van de building-
+   laag is altijd exact 1 device-pixel en verdrinkt op een hoge-dpi
+   scherm; een echte line-laag schaalt met de zoom en leest daardoor
+   ook in 2D. Blijft bewust dun en halftransparant — contour, geen
+   markering. Tunables: line-width en line-opacity. */
+function nightBuildingOutline(){
+  return {
+    id:"building-outline-night", type:"line",
+    source:"openmaptiles", "source-layer":"building",
+    minzoom:14,
+    filter:["match", ["geometry-type"], ["MultiPolygon","Polygon"], true, false],
+    paint:{
+      "line-color":NIGHT.buildEdge,
+      "line-width":["interpolate", ["linear"], ["zoom"], 14,.4, 16,.7, 19,1.2],
+      "line-opacity":["interpolate", ["linear"], ["zoom"], 14,.35, 16,.75]
+    }
+  };
+}
+
 function nightify(style){
   const s = JSON.parse(JSON.stringify(style));       // cache nooit muteren
   for (const layer of s.layers){
     const ov = NIGHT_PAINT[layer.id];
     if (ov) layer.paint = Object.assign({}, layer.paint, ov);
   }
+  /* contour direct boven de footprint-vulling */
+  const bi = s.layers.findIndex(l => l.id === "building");
+  if (bi >= 0 && !s.layers.some(l => l.id === "building-outline-night"))
+    s.layers.splice(bi + 1, 0, nightBuildingOutline());
   if (!s.layers.some(l => l.type === "fill-extrusion")){
     /* boven de wegen, onder de labels: highway_name_other is in
        dark-matter de eerste weglabel-laag. Ontbreekt die, dan achteraan
@@ -3327,7 +3367,26 @@ function ensureMotionLoop(){
   motion.raf = requestAnimationFrame(drawMotionFrame);
 }
 
-function initMap(lon, lat){
+/* ═══ PATCH 22 — STARTZOOM ═══════════════════════════
+   Zoom 17 klopt bij stilstand maar is onbruikbaar krap als de app start
+   terwijl je al 120 rijdt. De eerste fix draagt meestal al een
+   Doppler-snelheid; die bepaalt het startniveau.
+   Tunable: de vier niveaus en de drempels hieronder. */
+const START_ZOOM = {
+  stil:17, stad:16, buitenweg:15.5, snelweg:15,
+  onbekend:16            /* eerste fix zonder Doppler: neutraal beginnen,
+                            niet aannemen dat je stilstaat */
+};
+const START_ZOOM_SETTLE_MS = 10000;
+
+function zoomForSpeed(kmh){
+  if (!Number.isFinite(kmh) || kmh < 15) return START_ZOOM.stil;
+  if (kmh < 55)  return START_ZOOM.stad;        // jouw drempel van 54
+  if (kmh < 100) return START_ZOOM.buitenweg;
+  return START_ZOOM.snelweg;
+}
+
+function initMap(lon, lat, speedMs){
   /* Patch 20: lastLat/lastLon staan al → de zonberekening klopt.
      Hebben we de gewenste stijl al in cache, dan start de kaart er
      direct in (geen witte flits bij een avondstart). Zo niet, dan
@@ -3336,12 +3395,46 @@ function initMap(lon, lat){
      start zonder netwerk. */
   applyTheme();
   const bootStyle = themedStyle(themeNow);
+
+  /* Patch 22: snelheid van de eerste fix → startzoom. */
+  const startKmh = (speedMs != null && !isNaN(speedMs) && speedMs >= 0)
+    ? speedMs * 3.6 : NaN;
+  const startZoom = Number.isFinite(startKmh)
+    ? zoomForSpeed(startKmh) : START_ZOOM.onbekend;
+  diagAdd("zoom.start", {
+    kmh: Number.isFinite(startKmh) ? +startKmh.toFixed(1) : null, zoom:startZoom });
+
   map = new maplibregl.Map({
     container:"map", style: bootStyle || STYLE_DAY,
-    center:[lon,lat], zoom:17, pitch:viewMode === "3d" ? 60 : 0, bearing:0,
+    center:[lon,lat], zoom:startZoom, pitch:viewMode === "3d" ? 60 : 0, bearing:0,
     attributionControl:{compact:true}, fadeDuration:0
   });
   mapStyleApplied = bootStyle ? themeNow : "day";
+
+  /* Gaf de eerste fix geen snelheid (koude start, sommige toestellen),
+     dan één keer herzien zodra dispSpeed is ingelopen — en alleen als de
+     gebruiker de kaart nog niet heeft aangeraakt. Nooit vaker dan dit:
+     zoom die tijdens het rijden uit zichzelf verspringt is hinderlijk. */
+  if (!Number.isFinite(startKmh)){
+    /* dispSpeed is een EMA en loopt vanaf 0 in; op t+6 s stond hij bij
+       119 km/u nog pas rond 45. Daarom 10 s én de PIEK over dat venster,
+       niet de momentwaarde — anders kies je een te krappe zoom. */
+    let peakKmh = 0;
+    const sampler = setInterval(() => {
+      peakKmh = Math.max(peakKmh, dispSpeed * 3.6);
+    }, 500);
+    setTimeout(() => {
+      clearInterval(sampler);
+      if (!map || !mapReady || !following) return;
+      if (cameraControl.interactionActive) return;
+      const kmh = Math.max(peakKmh, dispSpeed * 3.6);
+      const want = zoomForSpeed(kmh);
+      if (Math.abs(map.getZoom() - want) < .1) return;
+      blockCameraForButtonZoom();
+      map.easeTo({ zoom:want, duration:300 });
+      diagAdd("zoom.start_settled", { kmh:+kmh.toFixed(1), zoom:want });
+    }, START_ZOOM_SETTLE_MS);
+  }
   map.touchZoomRotate.disableRotation();
 
   /* ── Patch 11: vroege camerablokkade ─────────────────────────
@@ -3636,7 +3729,7 @@ function onFix(pos){
     stationary.lockBearing = null;
     stationary.exitEvidence = 0;
 
-    initMap(c.longitude, c.latitude);
+    initMap(c.longitude, c.latitude, c.speed);
   }
 
     const acc = c.accuracy ?? 999;
