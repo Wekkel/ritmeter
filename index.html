@@ -3415,13 +3415,16 @@ function initMap(lon, lat, speedMs){
   /* Patch 22: snelheid van de eerste fix → startzoom. */
   const startKmh = (speedMs != null && !isNaN(speedMs) && speedMs >= 0)
     ? speedMs * 3.6 : NaN;
-  /* viewMode staat al vast (uit localStorage), dus de kaart start
-     meteen op het niveau dat bij deze weergave hoort. */
-  const startZoom = Number.isFinite(startKmh)
-    ? zoomForSpeed(startKmh, viewMode) : zoomTabel(viewMode).onbekend;
+ /* Patch 25: een bewaarde zoomstand wint van de snelheidskeuze.
+     viewMode staat al vast (uit localStorage), dus de terugval kiest
+     meteen het niveau dat bij deze weergave hoort. */
+  const bewaard = laatsteZoom();
+  const startZoom = bewaard != null ? bewaard
+    : (Number.isFinite(startKmh)
+        ? zoomForSpeed(startKmh, viewMode) : zoomTabel(viewMode).onbekend);
   diagAdd("zoom.start", {
     kmh: Number.isFinite(startKmh) ? +startKmh.toFixed(1) : null,
-    view:viewMode, zoom:startZoom });
+    view:viewMode, zoom:startZoom, bron: bewaard != null ? "bewaard" : "snelheid" });
 
   map = new maplibregl.Map({
     container:"map", style: bootStyle || STYLE_DAY,
@@ -3434,7 +3437,7 @@ function initMap(lon, lat, speedMs){
      dan één keer herzien zodra dispSpeed is ingelopen — en alleen als de
      gebruiker de kaart nog niet heeft aangeraakt. Nooit vaker dan dit:
      zoom die tijdens het rijden uit zichzelf verspringt is hinderlijk. */
-  if (!Number.isFinite(startKmh)){
+  if (!Number.isFinite(startKmh) && bewaard == null){
     /* dispSpeed is een EMA en loopt vanaf 0 in; op t+6 s stond hij bij
        119 km/u nog pas rond 45. Daarom 10 s én de PIEK over dat venster,
        niet de momentwaarde — anders kies je een te krappe zoom. */
@@ -3458,6 +3461,10 @@ function initMap(lon, lat, speedMs){
     }, START_ZOOM_SETTLE_MS);
   }
   map.touchZoomRotate.disableRotation();
+
+  /* Patch 25: elke afgeronde zoomwijziging bewaren, gedebounced zodat
+     een pinch één schrijfactie oplevert in plaats van tientallen. */
+  map.on("zoomend", bewaarZoom);
 
   /* ── Patch 11: vroege camerablokkade ─────────────────────────
      dragstart/zoomstart vuren pas nádat MapLibre de gesture herkend
@@ -4578,6 +4585,40 @@ $("r-recenter").onclick = resumeFollow;
    camera schrijft nooit zoom, dus die triggert dit niet.
    Puur presentatie: raakt camera-, follow- en motionlogica niet. */
 const ZOOM_BTN_MIN = 4, ZOOM_BTN_MAX = 20;
+
+/* ═══ PATCH 25 — LAATSTE ZOOMSTAND ONTHOUDEN ═══════════════
+   Eén waarde voor 2D en 3D samen, zoals gevraagd. Wordt bij het
+   starten boven de snelheidskeuze verkozen; alleen als er niets
+   bewaard is (eerste start, of na wissen) bepaalt de snelheid het
+   niveau.
+
+   De follow-camera schrijft nooit zoom (jumpTo zet alleen center en
+   bearing), dus "zoomend" vuurt uitsluitend bij de zoomknoppen, een
+   pinch en de eenmalige nameting — precies wat we willen bewaren.
+   Tunable: ZOOM_SAVE_MS. */
+const ZOOM_SAVE_MS = 1200;
+let zoomSaveTimer = 0;
+
+/* null als er niets bruikbaars staat: elke lezer moet zelf beslissen
+   wat de terugval is, en een kapotte of buitenissige waarde uit een
+   oude versie mag de kaart nooit onbruikbaar maken. */
+function laatsteZoom(){
+  const z = parseFloat(LS.getItem("rm_zoom"));
+  if (!Number.isFinite(z)) return null;
+  if (z < ZOOM_BTN_MIN || z > ZOOM_BTN_MAX) return null;
+  return z;
+}
+
+function bewaarZoom(){
+  if (!map) return;
+  clearTimeout(zoomSaveTimer);
+  zoomSaveTimer = setTimeout(() => {
+    if (!map) return;
+    const z = map.getZoom();
+    if (!Number.isFinite(z)) return;
+    try{ LS.setItem("rm_zoom", z.toFixed(2)); }catch(err){}
+  }, ZOOM_SAVE_MS);
+}
 let zoomLvlTimer = 0;
 function showZoomLevel(){
   if (!map) return;
