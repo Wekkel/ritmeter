@@ -6,7 +6,7 @@
        * plafond          : tile-cache blijft onder TILE_MAX_BYTES (oudste eruit, FIFO)
    - fonts e.d. (overige externe origins): gewoon via het netwerk */
 
-const VERSION = "1.3.3";                 // Implement route completion tracking and gradient
+const VERSION = "1.3.4";                 //  remember the last zoom level
 const CACHE      = "ritmeter-v" + VERSION;   // shell: wordt per versie ververst
 const TILE_CACHE = "ritmeter-tiles";         // tiles: NIET geversioneerd → overleeft app-updates
 
