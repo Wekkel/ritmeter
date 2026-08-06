@@ -1059,18 +1059,39 @@ let lastBearing = null, lastAltRaw = null, lastFixTime = 0, lastLat = null, last
    Alleen tellers + één diag-event per minuut; geen invloed op
    trip.dist, routelogging of persistence. */
 const tripLoss = {
-  accDropM:0,    // meters gereden tijdens acc > 35 (wordt nu overbrugd, niet verworpen)
+  accDropM:0,    // meters gereden tijdens acc > ACC_GATE (wordt overbrugd, niet verworpen)
   accDropN:0,
   gateSkipN:0,   // fixes die de bewegingsdrempel niet haalden
   glitchDropM:0, // meters verworpen via de d > 200-glitchtak
   glitchN:0,
+  softN:0,       // Patch 26: fixes via de zachte poort in de route gelogd
   lastBadPos:null, // laatste slechte-accuracy-fix, alleen voor meting
   lastLogAt:0
 };
+
+/* ═══ PATCH 26 — TWEETRAPS NAUWKEURIGHEIDSPOORT ══════════
+   ACC_GATE (hard): zoals altijd. Telt mee voor trip.dist, trip.max,
+   lastPos en de routelijn. Hier verandert niets aan.
+
+   ACC_GATE_SOFT (zacht): fixes tussen de twee drempels gaan alléén de
+   routelijn in, met soft:1 gemarkeerd. Ze raken trip.dist niet — dat
+   pad blijft de koorde-overbrugging van Patch 6b, die al klopte. Zo
+   valt er geen gat van honderden meters in de lijn terwijl de
+   kilometerstand onaangetast blijft.
+
+   Aanleiding: op de iPhone springt de gemelde nauwkeurigheid
+   episodisch naar 40-56 m waar de S24 op 3,8 m blijft. Een drempel
+   die met het toestel meebeweegt helpt daar niet tegen — de mediaan
+   van de iPhone is gewoon 3,5 m. Vandaar een tweede vaste trap.
+   Tunables: beide drempels en SOFT_MAX_MS. */
+const ACC_GATE      = 35;
+const ACC_GATE_SOFT = 60;
+const SOFT_MAX_MS   = 70;   // m/s; zelfde plausibiliteitsgrens als het hoofdpad
 function resetTripLoss(){
   tripLoss.accDropM = 0; tripLoss.accDropN = 0;
-  tripLoss.gateSkipN = 0;
+ tripLoss.gateSkipN = 0;
   tripLoss.glitchDropM = 0; tripLoss.glitchN = 0;
+  tripLoss.softN = 0;
   tripLoss.lastBadPos = null;
   tripLoss.lastLogAt = 0;
 }
@@ -3964,7 +3985,7 @@ function onFix(pos){
   }
 
  /* tripafstand + routepunten (hoogte altijd NAP-gecorrigeerd geregistreerd) */
- if (trip.running && acc <= 35){
+ if (trip.running && acc <= ACC_GATE){
     trip.accSum += acc; trip.accN++;
     const here = { lat:c.latitude, lon:c.longitude };
 
@@ -4022,13 +4043,14 @@ function onFix(pos){
         accDropM:+tripLoss.accDropM.toFixed(0),
         accDropN:tripLoss.accDropN,
         gateSkipN:tripLoss.gateSkipN,
+        softN:tripLoss.softN,
         glitchDropM:+tripLoss.glitchDropM.toFixed(0),
         glitchN:tripLoss.glitchN,
         acc:Math.round(acc)
       });
     }
  } else if (trip.running){
-    /* Patch 6b: bij acc > 35 schuift lastPos NIET meer op.
+    /* Patch 6b: bij acc > ACC_GATE schuift lastPos NIET meer op.
        De werkelijk gereden afstand over dit segment wordt bij de
        eerstvolgende goede fix als koorde alsnog geteld, beveiligd
        door de bestaande d/dt < 70-poort. De tellers meten het
@@ -4039,6 +4061,25 @@ function onFix(pos){
     if (badRef) tripLoss.accDropM += hv(badRef, hereBad);
     tripLoss.accDropN++;
     tripLoss.lastBadPos = hereBad;
+
+    /* Patch 26: zachte poort — alleen de routelijn, niet de afstand.
+       De sprong sinds het vorige routepunt moet een geloofwaardige
+       snelheid opleveren, anders laten we het punt liever vallen:
+       een gat is beter dan een uitschieter van een kilometer. */
+    if (acc <= ACC_GATE_SOFT){
+      const refS = lastSample || lastPos;
+      const dtS  = refS ? (ts - refS.t) / 1000 : 0;
+      const dS   = refS ? hv(refS, hereBad) : 0;
+      const plausibel = !refS || dtS <= 0 || (dS / dtS) < SOFT_MAX_MS;
+      if (plausibel && (!lastSample || ts - lastSample.t >= 3000 || dS >= 25)){
+        route.push({ t:ts, lat:+c.latitude.toFixed(6), lon:+c.longitude.toFixed(6),
+                     v:+dispSpeed.toFixed(2),
+                     alt: lastAltRaw == null ? null : +(lastAltRaw - altOffset).toFixed(1),
+                     acc: Math.round(acc), soft:1 });
+        lastSample = { ...hereBad, t:ts };
+        tripLoss.softN++;
+      }
+    }
   } else {
     lastPos = { lat:c.latitude, lon:c.longitude, t:ts };
   }
