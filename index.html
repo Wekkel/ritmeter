@@ -2386,6 +2386,21 @@ const CAMERA_FRAME_MS = 1000 / CAMERA_FPS;
 const CAMERA_GESTURE_GRACE_MS = 220;
 const CAMERA_BUTTON_ZOOM_BLOCK_MS = 420;
 
+/* ═══ PATCH 27 — VLOEIEND TERUGVLIEGEN ════════════════════
+   resumeFollow() sprong met jumpTo() in één frame terug naar de
+   driehoek. easeTo() maakt daar een korte vlucht van.
+
+   Er is geen extra camerablokkade nodig: cameraWriteBlocked() ziet
+   map.isEasing() al als blokkade, dus de follow-camera onderbreekt de
+   animatie niet. En de dragstart-handler negeert bewegingen zonder
+   originalEvent, dus de animatie zet follow niet zelf weer op pauze.
+
+   De duur schaalt licht mee met de afstand op het scherm: een klein
+   zetje voelt direct, een grote verplaatsing krijgt iets meer tijd. */
+const FOLLOW_EASE_MS         = 420;   // basisduur bij ~1 schermbreedte
+const FOLLOW_EASE_MAX_MS     = 650;   // bovengrens
+const FOLLOW_EASE_MAX_SCREENS = 4;    // verder weg: animeren is beeldruis
+
 /* ── stationary lock ────────────────────────────────────────
    GPS-fixes van een stilstaand toestel vormen meestal geen exact punt,
    maar een kleine wolk. Na overtuigende stilstand vergrendelen we alleen
@@ -3638,10 +3653,32 @@ function resumeFollow(){
       lastBearing ??
       map.getBearing());
 
-    map.jumpTo({
-      center:[p.lon,p.lat],
-      bearing:resumeBearing
-    });
+   /* Patch 27: geanimeerd terug i.p.v. omspringen. Geldt ook voor de
+       recenter-knop, die dezelfde functie aanroept.
+       Tunables: de drie FOLLOW_EASE-constanten en de easing-regel. */
+    let px = 0;
+    try{
+      const a = map.project([p.lon, p.lat]);
+      const b = map.project(map.getCenter());
+      px = Math.hypot(a.x - b.x, a.y - b.y);
+    }catch(err){ px = 0; }
+    const canvas  = map.getCanvas();
+    const breedte = (canvas && canvas.clientWidth) || 400;
+    const schermen = px / breedte;
+
+    if (schermen > FOLLOW_EASE_MAX_SCREENS){
+      /* Zo ver weggepand dat een vlucht alleen maar geflikker oplevert. */
+      map.jumpTo({ center:[p.lon,p.lat], bearing:resumeBearing });
+    } else {
+      map.easeTo({
+        center:[p.lon,p.lat],
+        bearing:resumeBearing,
+        duration: Math.round(Math.min(FOLLOW_EASE_MAX_MS,
+          FOLLOW_EASE_MS * (0.55 + 0.45 * Math.min(3, schermen)))),
+        easing: t => t * (2 - t)      /* vlot weg, zacht aan; weglaten =
+                                         MapLibre's eigen ease-curve */
+      });
+    }
   }
 
   ensureMotionLoop();
