@@ -1,0 +1,39 @@
+/* ═══════════════════════════════════════════════════════════
+   RitMeter — UI-laag (herbouw)
+   Discipline:
+   - zichtbaarheid UITSLUITEND via body[data-*]-selectors
+   - geometrie (positie/grootte) UITSLUITEND in de twee
+     oriëntatie-layouts (@media), niet in de modus
+   - geen !important, geen specificiteit-gevechten
+   ═══════════════════════════════════════════════════════════ */
+
+:root{
+  --bg:#0B0F14;
+  --panel:rgba(13,19,26,.82);
+  --line:#22303E;
+  --text:#E9EEF3;
+  --muted:#7E8B98;
+  --amber:#FFB300;
+  --digit:#FFB300;          /* instelbare cijferkleur (token, in render gezet) */
+  --nav:#E000FF;
+  --nav-dark:#3A0A33;
+  --ok:#3AD673;
+  --warn:#FFB300;
+  --bad:#FF5252;
+  --radius:18px;
+  --dim-opacity:0;          /* nachtdimmer (token, in render gezet) */
+  --speed-size:72px;        /* per oriëntatie + presentatie gezet */
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+   --ui: 1;
+  --fab: calc(42px * var(--ui));
+  --compass: calc(60px * var(--ui));
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;touch-action:manipulation;
+  user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+

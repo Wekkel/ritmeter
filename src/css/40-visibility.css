@@ -1,0 +1,79 @@
+/* ═══ ZICHTBAARHEID — uitsluitend body[data-*] ═════════════
+   Elk eindresultaat wordt door precies één winnende regel
+   bepaald; geen volgorde-afhankelijke override-stapels.      */
+
+/* groot-getal verbergt de hele kaart-chrome */
+body[data-presentation="big"] #map,
+body[data-presentation="big"] #r-controls,
+body[data-presentation="big"] #r-status,
+body[data-presentation="big"] #r-compass,
+body[data-presentation="big"] #r-altitude,
+body[data-presentation="big"] #r-trip,
+body[data-presentation="big"] #r-navinfo,
+body[data-presentation="big"] #r-recenter,
+body[data-presentation="big"] #navPanel{display:none}
+
+/* kompas & hoogte: alleen in kaart-stand én als voorkeur aan */
+#r-compass{display:none}
+body[data-presentation="map"][data-compass="on"] #r-compass{display:block}
+#r-altitude{display:none}
+body[data-presentation="map"][data-altitude="on"] #r-altitude{display:flex}
+
+/* centreerknop: alleen in kaart-stand én als de kaart versleept is */
+#r-recenter{display:none}
+body[data-presentation="map"][data-dragged="yes"] #r-recenter{display:grid}
+
+/* zoomknoppen (Patch 18): alleen in kaart-stand én terwijl de
+   tap-chrome zichtbaar is — bewust ook tijdens een actieve rit. */
+#r-zoom{display:none}
+body[data-presentation="map"][data-chrome="on"] #r-zoom{display:flex}
+
+/* tap-chrome (Patch 18): in idle zonder tik geen tripeiland; de
+   snelheidsmeter verdwijnt alleen als 'altijd tonen' uit staat.
+   Tijdens running/paused blijft het eiland altijd staan. Gated op
+   kaart-stand zodat groot-getal ongemoeid blijft. */
+body[data-presentation="map"][data-measuring="idle"][data-chrome="off"] #r-trip{display:none}
+body[data-presentation="map"][data-speedvis="off"][data-measuring="idle"][data-chrome="off"] #r-speed{display:none}
+
+/* 2D/3D-knop: tekstlabel in de fab */
+#viewBtn{font-family:"Chakra Petch",sans-serif;font-weight:700;
+  font-size:calc(13px * var(--ui));letter-spacing:.04em}
+
+/* ── controlstrip (Patch 13) ─────────────────────────────────
+   min = ⋯ + groot-getal; de rest alleen bij data-controls="open".
+   Elke knop heeft precies één winnende regel. */
+body[data-controls="min"] #setBtn,
+body[data-controls="min"] #histBtn,
+body[data-controls="min"] #navBtn,
+body[data-controls="min"] #viewBtn{display:none}
+body[data-controls="open"] #moreBtn{color:var(--amber);border-color:var(--amber)}
+
+/* noord-vast-knop: alleen in kaart-stand, 2D-modus én open rail.
+   Bewust de toon-regel uitgebreid i.p.v. een extra verberg-regel:
+   zo blijft er één winnende regel en geen specificiteitsgevecht. */
+#northBtn{display:none}
+body[data-presentation="map"][data-viewmode="2d"][data-controls="open"] #northBtn{display:grid}
+body[data-northlock="on"] #northBtn{color:var(--amber);border-color:var(--amber)}
+/* nav-info: alleen in kaart-stand tijdens route */
+#r-navinfo{display:none}
+body[data-presentation="map"][data-nav="route"] #r-navinfo{display:flex}
+
+/* zoekpaneel: alleen in kaart-stand tijdens search (slide via transform) */
+body[data-presentation="map"][data-nav="search"] #navPanel{transform:none}
+
+/* schermvullend tikvlak: alleen in groot-getal */
+#r-exit{display:none}
+body[data-presentation="big"] #r-exit{display:block}
+
+/* groot-getal: snelheid centreren + vergroten; spiegelen alleen hier */
+body[data-presentation="big"] #r-speed{grid-area:1 / 1 / -1 / -1;place-self:center;
+  background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+body[data-presentation="big"] #unitBtn{font-size:20px;pointer-events:none}
+body[data-presentation="big"][data-mirror="on"] #speedVal{transform:scaleX(-1)}
+
+/* modale overlays */
+#settings,#hist,#detail{display:none}
+body[data-overlay="settings"] #settings{display:grid}
+body[data-overlay="history"] #hist{display:flex}
+body[data-overlay="detail"] #detail{display:flex}
+

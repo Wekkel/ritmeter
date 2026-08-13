@@ -1,0 +1,19 @@
+/* ── toast & meldingen ── */
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 110px);
+  transform:translateX(-50%) translateY(10px);z-index:80;background:#1A232E;
+  border:1px solid var(--line);border-radius:99px;padding:10px 20px;font-size:14px;
+  font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#notice{position:fixed;inset:0;z-index:70;display:none;place-items:center;
+  background:rgba(11,15,20,.92);padding:30px;text-align:center}
+#notice.show{display:grid}
+#notice .card{max-width:340px}
+#notice h2{font-family:"Chakra Petch",sans-serif;color:var(--amber);margin:0 0 10px}
+#notice p{color:var(--muted);line-height:1.5;font-size:15px}
+#notice button{margin-top:16px;padding:12px 28px;border-radius:13px;background:var(--amber);
+  color:#1A1200;font-weight:700}
+   /* ═══ LAYOUT C — HEAD-UNIT (Patch 17, definitief) ═══════════
+   #r-island (snelheid + tripbalk) is één flex-kolom linksonder,
+   spant rijen 3–5 en kolommen 1–2: linker rand gelijk aan de
+   fabs, geen gap tussen de segmenten, en verticale overlap met
+   de zoom/recenter-rijen zodat alles in 516 px hoogte past. */

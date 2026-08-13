@@ -1,0 +1,12 @@
+/* ── kaart: basislaag ─────────────────────────────────────── */
+#map{position:fixed;inset:0;background:#0B0F14}
+.maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.6)!important;color:#9aa7b4}
+.maplibregl-ctrl-attrib a{color:#9aa7b4!important}
+
+/* ── positiemarker ── */
+.me{width:46px;height:46px;position:relative}
+.me::before{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,179,0,.35),transparent 70%)}
+.me svg{position:absolute;inset:8px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+.navDest svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
+

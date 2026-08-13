@@ -8,10 +8,77 @@ Works on Android and iPhone — and on Android-based car head units — no app s
 
 | File | Purpose |
 |---|---|
-| `index.html` | The complete app (HTML + CSS + JavaScript) |
+| `index.html` | Page shell: loads the CSS and JavaScript from `src/` in a fixed order |
+| `src/css/` | Stylesheets, one per concern, loaded in cascade order |
+| `src/js/` | Application code, one file per concern, loaded in dependency order |
 | `manifest.json` | Makes the app installable |
 | `sw.js` | Service worker: fast start, offline app shell and map-tile caching |
 | `icon-*.png` | App icons |
+
+## Source layout
+
+RitMeter is a plain static site: no bundler, no build step, no dependencies.
+`index.html` is only a shell — it loads the CSS and JavaScript from `src/` with
+ordinary `<link>` and `<script src>` tags. Edit a file in `src/`, commit it, bump
+`VERSION` in `sw.js`, and your devices pick it up.
+
+### Order matters
+
+The load order in `index.html` is functional, not cosmetic:
+
+* **CSS** — the cascade decides which layout wins (portrait / landscape / head unit).
+* **JavaScript** — these are classic scripts, so they share one global scope and a
+  `const` declared in one file is visible in the next. But function declarations do
+  **not** hoist across file boundaries: a file may only call what was loaded before it.
+  `90-boot.js` runs last and starts the app.
+
+The numeric prefixes mirror the load order, so the directory listing reads the same
+way the page does.
+
+### Adding a file
+
+Add it in two places: the `<link>`/`<script>` list in `index.html`, **and** `SHELL`
+in `sw.js`. Forget the second and the app still works online but no longer starts
+offline — which is exactly the kind of failure you discover in a tunnel.
+
+### Releasing
+
+`sw.js` serves `index.html` network-first and everything else cache-first, keyed on
+the cache name. Bump `VERSION` in `sw.js` to retire the old cache and push a new
+version to your devices.
+
+### Source layout
+
+| Path | Contents |
+|---|---|
+| `src/css/00-tokens.css` | design tokens, `:root` variables, base reset |
+| `src/css/10-map.css` | map layer and position marker |
+| `src/css/20-ui-grid.css` | the UI overlay grid and pointer-events policy |
+| `src/css/30-regions.css` | per-region appearance (not geometry) |
+| `src/css/40-visibility.css` | visibility rules, driven purely by `body[data-*]` |
+| `src/css/50-layout-portrait.css` | Layout A + collapsible speed island |
+| `src/css/60-layout-landscape.css` | Layout B |
+| `src/css/70-panels.css` | search panel, settings, history and trip detail |
+| `src/css/80-toast.css` | toasts and notices |
+| `src/css/90-layout-c.css` | Layout C — tablet / car head unit |
+| `src/js/00-state.js` | the single source of truth, theme and view-mode state |
+| `src/js/05-i18n.js` | Dutch and English strings |
+| `src/js/10-trip.js` | trip state, loss counters, accuracy gates, speed filter |
+| `src/js/15-helpers.js` | small shared utilities |
+| `src/js/20-diag.js` | bounded diagnostic ring buffer and export |
+| `src/js/25-storage.js` | IndexedDB, route persistence, session recovery |
+| `src/js/30-render.js` | the render contract |
+| `src/js/35-map-theme.js` | map styles, day/night engine, night palette |
+| `src/js/40-motion.js` | position smoothing, stationary lock, bearing, dead reckoning |
+| `src/js/45-camera.js` | camera control and the follow camera |
+| `src/js/50-map-init.js` | start zoom tables, `initMap`, follow suspend/resume |
+| `src/js/55-gps.js` | GPS watchdog and the per-fix pipeline |
+| `src/js/60-clock.js` | clock, auto-pause, start/stop/reset |
+| `src/js/65-history.js` | history overlay, elevation profile, GPX export |
+| `src/js/70-settings.js` | static texts and settings UI sync |
+| `src/js/75-handlers.js` | all event handlers, wake lock, service worker |
+| `src/js/80-nav.js` | geocoding, routing, route drawing and progress |
+| `src/js/90-boot.js` | startup order |
 
 ## Installing on your phones
 

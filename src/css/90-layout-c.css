@@ -1,0 +1,73 @@
+@media (min-width:700px) and (min-height:460px) and (max-resolution:1.5dppx){
+  :root{ --ui: 1.7; --speed-size: 40px }
+
+  #ui{
+    grid-template-columns:auto auto 1fr auto;
+    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-areas:
+      "controls .      .  status"
+      "controls .      .  compass"
+      "island   island .  zoom"
+      "island   island .  recenter"
+      "island   island .  navinfo";
+  }
+
+  /* Groot-getal is naast de BMW-teller zinloos. */
+  #modeBtn{display:none}
+
+  /* Noord-vast naast de 2D/3D-knop i.p.v. eronder: de open rail
+     blijft 5 knoppen hoog en klapt vrij van het eiland uit.
+     top = 4 × (fab + gap) lijnt exact uit met de 2D/3D-knop
+     (⋯, set, hist, nav, 2D/3D = posities 0–4). Zichtbaarheid
+     blijft volledig bij de bestaande body[data-*]-regel. */
+ /* Vaste railhoogte van één fab: de uitgeklapte knoppen hangen
+     als overflow onder het grid-item en tellen niet mee in de
+     rijhoogtes. Rijen 1–2 worden zo uitsluitend door status en
+     kompas bepaald — de rechterkolom staat vast, rail open of
+     dicht. Knoppen in overflow blijven gewoon klikbaar. */
+ /* height beperkt het grid-item tot één fab (rechterkolom-stabiliteit);
+     flex-shrink:0 verbiedt de flex-container de knoppen in die hoogte
+     samen te persen — ze hangen dan als echte overflow eronder. */
+  #r-controls{position:relative;height:var(--fab)}
+  #r-controls .fab{flex-shrink:0}
+  #northBtn{position:absolute;left:calc(100% + 10px);
+    top:calc(4 * (var(--fab) + 10px))}
+
+  /* DE kernregel: wrapper wordt flex-kolom. Wint van de
+     display:contents-basisregel omdat dit blok later staat. */
+ /* min-width is de tunable voor de eilandbreedte: beide segmenten
+     stretchen ernaar, dus Start rit wordt navenant breder. */
+  #r-island{grid-area:island;display:flex;flex-direction:column;
+    align-self:end;justify-self:start;min-width:calc(160px * var(--ui))}
+  /* Basisregels geven de segmenten align-self:start/end mee (grid-
+     eigenschap voor portret/liggend); in deze flex-kolom werkt
+     align-self op de dwarsas en zou het de breedte-stretch breken.
+     Expliciet terug naar stretch: beide segmenten altijd even breed. */
+  #r-speed,#r-trip{align-self:stretch}
+
+  /* Bovenste segment: snelheid + eenheid op één regel, alleen
+     bovenhoeken rond; trips bovenrand is de scheidslijn. */
+ #r-speed{display:flex;align-items:baseline;justify-content:center;gap:10px;
+    padding:12px 18px 8px;text-align:left;box-shadow:none;
+    border-radius:var(--radius) var(--radius) 0 0;border-bottom:none}
+  /* Patch 18: is het tripsegment verborgen (idle, chrome off), dan
+     staat de snelheidspil solo → volledige hoeken + onderrand terug. */
+  body[data-measuring="idle"][data-chrome="off"] #r-speed{
+    border-radius:var(--radius);border-bottom:1px solid var(--line)}
+  #unitBtn{margin:0;padding:0 2px;font-size:15px;letter-spacing:.14em}
+
+  /* Onderste segment: stats 2×2 + brede knoppenrij. width/max-width
+     overschrijven bewust de fit-content/46vw-regels uit Layout B. */
+  #r-trip{width:auto;max-width:none;
+    border-radius:0 0 var(--radius) var(--radius)}
+  #r-trip #stats{grid-template-columns:repeat(2,1fr);justify-content:normal;
+    column-gap:calc(14px * var(--ui));row-gap:8px;margin-bottom:10px}
+  #r-trip .stat b{font-size:calc(15px * var(--ui))}
+  #r-trip .btn{padding-top:14px;padding-bottom:14px;font-size:calc(14px * var(--ui))}
+
+  /* Nav-eiland: rechts, opgetild van de bodem richting ~3/4
+     schermhoogte. 16vh is de tunable voor de hoogte. */
+  #r-navinfo{align-self:end;justify-self:end;border-radius:var(--radius);
+    margin-bottom:16vh;
+    max-width:min(calc(360px * var(--ui)),46vw)}
+}

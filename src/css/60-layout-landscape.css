@@ -1,0 +1,40 @@
+/* ═══ LAYOUT B — LIGGEND (volledige, op zichzelf staande plattegrond) ═══ */
+@media (orientation:landscape){
+  :root{--speed-size:46px}
+  body[data-presentation="big"]{--speed-size:min(48vh,230px)}
+
+  #ui{
+    grid-template-columns:auto auto 1fr auto;
+    grid-template-rows:auto auto auto 1fr auto;
+    grid-template-areas:
+      "controls speed    .       status"
+      "controls .        .       compass"
+      "controls .        .       zoom"
+      "controls trip     .       recenter"
+      "controls trip     navinfo navinfo";
+  }
+  #r-controls{grid-area:controls}
+  #r-speed{grid-area:speed;justify-self:start;min-width:0;padding:6px 18px 8px}
+  #r-status{grid-area:status}
+  #r-compass{grid-area:compass}
+  #r-zoom{grid-area:zoom}
+  #r-altitude{display:none}                 /* hoogte-uitlezing alleen relevant in portret */
+  #r-recenter{grid-area:recenter}
+  #r-navinfo{grid-area:navinfo;justify-self:end;max-width:min(calc(360px * var(--ui)),46vw)}
+ #r-trip{grid-area:trip;align-self:end;justify-self:start;width:fit-content;max-width:46vw}
+  #r-trip #stats{margin-bottom:8px;gap:5px;grid-template-columns:repeat(4,auto);
+    justify-content:space-between;column-gap:calc(18px * var(--ui))}
+  #r-trip .stat b{font-size:calc(16.5px * var(--ui))}
+  #r-trip .stat span{font-size:calc(10px * var(--ui))}
+  #r-trip .btn{padding-top:10px;padding-bottom:10px;font-size:calc(14px * var(--ui))}
+
+  /* in liggend toont hoogte/kompas niet via voorkeur; herstel kompas alleen */
+  body[data-presentation="map"][data-altitude="on"] #r-altitude{display:none}
+
+  /* zoekpaneel = linker kolom */
+  #navPanel{position:fixed;left:calc(var(--sal) + 10px);right:auto;
+    top:calc(var(--sat) + 10px);bottom:calc(var(--sab) + 10px);
+    width:min(380px,44vw);border-radius:var(--radius);border:1px solid var(--line);
+    transform:translateX(-115%)}
+}
+

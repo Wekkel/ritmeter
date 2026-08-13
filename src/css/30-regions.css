@@ -1,0 +1,139 @@
+/* ── appearance per regio (look, NIET geometrie/zichtbaarheid) ── */
+.panel{background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line)}
+
+/* knoppenrail */
+#r-controls{display:flex;flex-direction:column;gap:10px}
+.fab svg{width:48%;height:48%}
+.fab{width:var(--fab);height:var(--fab);border-radius:50%;background:var(--panel);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.fab:active{color:var(--amber)}
+#navBtn:active{color:var(--nav)}
+
+/* snelheidscluster */
+#r-speed{align-self:start;justify-self:center;text-align:center;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:8px 26px 12px;min-width:196px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#speedVal{font-family:"Chakra Petch",system-ui,sans-serif;font-weight:700;
+  font-size:var(--speed-size);line-height:1;letter-spacing:.5px;color:var(--text);
+  font-variant-numeric:tabular-nums}
+#speedVal.moving{color:var(--digit)}
+#unitBtn{display:block;margin:2px auto 0;font-size:14px;font-weight:600;letter-spacing:.22em;
+  color:var(--muted);text-transform:uppercase;padding:4px 14px;border-radius:99px}
+#unitBtn:active{color:var(--amber)}
+
+/* gps-status */
+#r-status{justify-self:end;align-self:start;display:flex;align-items:center;gap:7px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:99px;padding:7px 13px;font-size:12px;color:var(--muted)}
+#gpsDot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s}
+#gpsDot.ok{background:var(--ok)}#gpsDot.mid{background:var(--warn)}
+
+/* kompasroos */
+#r-compass{justify-self:end;align-self:start;width:var(--compass);height:var(--compass);
+  border-radius:50%;background:var(--panel);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);border:1px solid var(--line)}
+#r-compass svg{width:100%;height:100%;display:block}
+#r-compass text{font:700 7.5px system-ui;fill:var(--muted)}
+#r-compass .n{font:700 9.5px system-ui;fill:#fff}
+#roseG{transform-origin:30px 30px;transition:transform .6s linear}
+
+/* hoogte & koers */
+#r-altitude{justify-self:center;align-self:start;display:flex;gap:18px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:99px;padding:8px 18px;
+  font-family:"Chakra Petch",sans-serif;font-size:16px;font-variant-numeric:tabular-nums;
+  color:var(--text);white-space:nowrap}
+#r-altitude .lbl{color:var(--muted);font-family:system-ui,sans-serif;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;margin-right:6px;vertical-align:1px}
+
+/* centreerknop */
+#r-recenter{justify-self:end;align-self:end}
+#r-zoom{justify-self:end;align-self:start;display:flex;flex-direction:column;gap:10px;position:relative}
+#zoomIn:active,#zoomOut:active{color:var(--amber)}
+/* zoomlevel-indicator (Patch 9): wit rondje links van de zoomknoppen,
+   vervaagt vanzelf na een zoomwijziging */
+#zoomLvl{position:absolute;right:calc(100% + 12px);top:50%;transform:translateY(-50%);
+  width:var(--fab);height:var(--fab);border-radius:50%;background:#fff;color:#000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  line-height:1;font-family:system-ui,sans-serif;font-weight:700;font-size:17px;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+  opacity:0;pointer-events:none;transition:opacity .5s ease}
+#zoomLvl.show{opacity:1;transition:none}
+#zoomLvl .sub{font-size:9px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:#555;margin-top:2px}
+#r-recenter:active{color:var(--amber)}
+
+/* nav-info: rustige regel met resterende afstand + ETA */
+#r-navinfo{align-self:end;display:flex;align-items:center;gap:calc(10px * var(--ui));
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--nav);border-radius:99px;
+  padding:calc(8px * var(--ui)) calc(14px * var(--ui));
+  font-size:calc(14px * var(--ui));color:var(--text);font-variant-numeric:tabular-nums;
+  box-shadow:0 4px 16px rgba(0,0,0,.4)}
+#r-navinfo .nf{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#r-navinfo b{font-family:"Chakra Petch",sans-serif;font-size:calc(17px * var(--ui));color:var(--text)}
+#navRecalc{flex:none;width:calc(34px * var(--ui));height:calc(34px * var(--ui));border-radius:50%;
+  display:grid;place-items:center;background:#141C25;border:1px solid var(--line);color:var(--muted)}
+#navRecalc:active{color:var(--nav)}
+#navStopBtn{flex:none;width:calc(34px * var(--ui));height:calc(34px * var(--ui));border-radius:50%;
+  display:grid;place-items:center;background:#2A1313;border:1px solid #5c2727;color:#FF8A8A;
+  font-size:calc(20px * var(--ui));line-height:1}
+
+/* tripbalk */
+#r-trip{align-self:end;background:var(--panel);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;text-align:center}
+.stat b{display:block;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:21px;
+  font-variant-numeric:tabular-nums;color:var(--text)}
+.stat span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+#btnRow{display:flex;gap:10px}
+.btn{flex:1;padding:13px 0;border-radius:13px;font-weight:700;font-size:16px;letter-spacing:.04em;
+  border:1px solid var(--line);background:#141C25;transition:transform .06s}
+.btn:active{transform:scale(.97)}
+#startBtn.go{background:var(--amber);border-color:var(--amber);color:#1A1200}
+#startBtn.halt{background:#2A1313;border-color:#5c2727;color:#FF8A8A}
+#resetBtn{flex:0 0 auto;padding-left:16px;padding-right:16px;color:var(--muted)}
+#resetBtn:disabled{opacity:.35}
+   /* na 'Stop': rit staat op pauze en is nog niet opgeslagen →
+   Opslaan+reset wordt de primaire actie (amber gevuld),
+   Hervat wordt secundair (amber contour) zodat de keuze duidelijk is */
+body[data-measuring="paused"] #resetBtn:not(:disabled){
+  opacity:1;color:#1A1200;background:var(--amber);border-color:var(--amber);
+  animation:savePulse 1.6s ease-in-out infinite}
+body[data-measuring="paused"] #startBtn.go{background:transparent;color:var(--amber)}
+@keyframes savePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,179,0,.45)}
+  50%{box-shadow:0 0 0 6px rgba(255,179,0,0)}}
+/* tripbalk contextgevoelig (Patch 14): bij idle geen nul-statistieken
+   en geen (toch al disabled) resetknop — alleen een smalle startstrook.
+   'paused' blijft bewust volledig: daar neem je de opslaan-beslissing
+   op basis van de cijfers. display:none wint hier van elke andere
+   #stats-regel, dus ook de route-compacte hieronder. */
+body[data-measuring="idle"] #stats{display:none}
+body[data-measuring="idle"] #resetBtn{display:none}
+
+/* compactere tripbalk tijdens route (alleen appearance) */
+body[data-nav="route"] #stats{margin-bottom:8px;gap:5px}
+body[data-nav="route"] .stat b{font-size:17px}
+body[data-nav="route"] .btn{padding-top:10px;padding-bottom:10px;font-size:14px}
+
+/* schermvullend tikvlak om uit groot-getal te gaan */
+#r-exit{position:fixed;inset:0;z-index:11;background:transparent}
+#r-exit #exitHint{position:absolute;left:0;right:0;bottom:calc(var(--sab) + 18px);
+  text-align:center;color:var(--muted);font-size:13px;letter-spacing:.08em}
+
+/* Patch 20: de dim-laag is nu thema-gestuurd i.p.v. een schuifregelaar.
+   De UI-chrome is al donker; het thema regelt de KAART (licht/donker)
+   plus dit restdempertje. Tunable: .10 — zet op 0 als je hem niet wil. */
+#dim{position:fixed;inset:0;z-index:65;background:#000;opacity:var(--dim-opacity);pointer-events:none}
+body[data-theme="day"]{--dim-opacity:0}
+/* Patch 22: van .10 naar .04. De kaart is nu zelf donker; die extra
+   zwarte laag haalde juist het contrast uit de bebouwingscontouren.
+   Zet op 0 als je hem helemaal niet wilt. */
+body[data-theme="night"]{--dim-opacity:.04}
+

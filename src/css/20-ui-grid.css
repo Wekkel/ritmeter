@@ -1,0 +1,20 @@
+/* ═══ UI-overlay: één grid over de kaart ═══════════════════
+   pointer-events:none zodat de kaart sleepbaar blijft;
+   interactieve regio's zetten pointer-events weer aan.        */
+#ui{position:fixed;inset:0;z-index:10;display:grid;pointer-events:none;
+  padding:calc(var(--sat) + 10px) calc(var(--sar) + 14px)
+          calc(var(--sab) + 10px) calc(var(--sal) + 14px);
+  gap:10px}
+#ui > *{pointer-events:none;min-width:0}
+/* alleen echte bedienelementen vangen aanrakingen op; lege regio's (kompas,
+   snelheid, status, de hele linker-/onderstrook) laten ze door naar de kaart */
+/* Patch 21: #unitBtn is hier weggehaald — de eenheid wordt uitsluitend
+   in de instellingen omgezet. Zonder pointer-events valt een tik op het
+   eenheidslabel door naar #r-speed (portret: in/uitklappen) of naar de
+   kaart (tap-chrome), precies zoals de rest van het eiland. */
+.fab,#r-recenter,#r-trip,#r-navinfo,#navPanel{pointer-events:auto}
+/* eiland-wrapper (Patch 17): buiten Layout C structureel onzichtbaar,
+   zodat #r-speed/#r-trip in portret/liggend/groot-getal directe
+   grid-items van #ui blijven (grid-area's werken door) */
+#r-island{display:contents}
+   

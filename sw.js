@@ -14,13 +14,45 @@ const TILE_HOSTS    = ["tiles.openfreemap.org"];          // tiles + style + gly
 const TILE_MAX_BYTES = 400 * 1024 * 1024;                 // 400 MB plafond
 const TILE_MAX_AGE   = 30 * 24 * 60 * 60 * 1000;          // 30 dagen → daarna verversen
 
+/* App-shell. Alles wat de app nodig heeft om zonder netwerk te starten.
+   LET OP: deze lijst moet gelijk lopen met de <link>- en <script>-tags in
+   index.html. Voeg je daar een bestand toe, voeg het hier dan ook toe —
+   anders start de app online prima en offline niet. */
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
-  "./icon-512-maskable.png"
+  "./icon-512-maskable.png",
+  "./src/css/00-tokens.css",
+  "./src/css/10-map.css",
+  "./src/css/20-ui-grid.css",
+  "./src/css/30-regions.css",
+  "./src/css/40-visibility.css",
+  "./src/css/50-layout-portrait.css",
+  "./src/css/60-layout-landscape.css",
+  "./src/css/70-panels.css",
+  "./src/css/80-toast.css",
+  "./src/css/90-layout-c.css",
+  "./src/js/00-state.js",
+  "./src/js/05-i18n.js",
+  "./src/js/10-trip.js",
+  "./src/js/15-helpers.js",
+  "./src/js/20-diag.js",
+  "./src/js/25-storage.js",
+  "./src/js/30-render.js",
+  "./src/js/35-map-theme.js",
+  "./src/js/40-motion.js",
+  "./src/js/45-camera.js",
+  "./src/js/50-map-init.js",
+  "./src/js/55-gps.js",
+  "./src/js/60-clock.js",
+  "./src/js/65-history.js",
+  "./src/js/70-settings.js",
+  "./src/js/75-handlers.js",
+  "./src/js/80-nav.js",
+  "./src/js/90-boot.js"
 ];
 
 self.addEventListener("message", e => {

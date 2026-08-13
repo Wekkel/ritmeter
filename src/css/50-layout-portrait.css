@@ -1,0 +1,69 @@
+/* ═══ LAYOUT A — PORTRET (volledige, op zichzelf staande plattegrond) ═══ */
+@media (orientation:portrait){
+  :root{--speed-size:72px}
+  body[data-presentation="big"]{--speed-size:min(46vw,210px)}
+
+  #ui{
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto auto auto 1fr auto auto;
+    grid-template-areas:
+      "controls speed    status"
+      "controls altitude compass"
+      "controls .        zoom"
+      "controls .        recenter"
+      "navinfo  navinfo  navinfo"
+      "trip     trip     trip";
+  }
+  #r-controls{grid-area:controls}
+  #r-speed{grid-area:speed}
+  #r-status{grid-area:status}
+  #r-compass{grid-area:compass}
+  #r-zoom{grid-area:zoom}
+  #r-altitude{grid-area:altitude}
+  #r-recenter{grid-area:recenter}
+  #r-navinfo{grid-area:navinfo}
+  #r-trip{grid-area:trip}
+
+  /* zoekpaneel = bottom sheet */
+  #navPanel{position:fixed;left:0;right:0;bottom:0;
+    border-radius:var(--radius) var(--radius) 0 0;border-top:1px solid var(--line);
+    transform:translateY(110%)}
+}
+
+/* ═══ PATCH 19 — SNELHEIDSEILAND INKLAPBAAR (alleen portret-smal) ═══
+   max-width:699px sluit Layout C (min-width:700px) hard uit, dus de
+   tabletweergave en de Carluex blijven onaangeroerd; orientation
+   sluit liggend uit. Alles gegate op data-presentation="map" zodat
+   groot-getal zijn eigen geometrie houdt.
+   Tunables: --speed-size (26px) en min-width (= kompasbreedte). */
+@media (orientation:portrait) and (max-width:699px){
+
+  /* het eiland is tikbaar in béide standen; #unitBtn houdt via de
+     handler zijn eigen functie. Let op: hierdoor pant een veeg die
+     óp het eiland begint de kaart niet meer — bewuste ruil. */
+  body[data-presentation="map"] #r-speed{pointer-events:auto}
+
+  /* er komt één rij bij; rechterkolom wordt status → snelheid → kompas */
+  body[data-presentation="map"][data-speedpos="compact"] #ui{
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto auto auto auto 1fr auto auto;
+    grid-template-areas:
+      "controls .        status"
+      "controls .        speed"
+      "controls altitude compass"
+      "controls .        zoom"
+      "controls .        recenter"
+      "navinfo  navinfo  navinfo"
+      "trip     trip     trip";
+  }
+
+  /* --speed-size op het eiland zélf: erft naar #speedVal en raakt de
+     :root-tokens van de andere layouts niet aan. */
+  body[data-presentation="map"][data-speedpos="compact"] #r-speed{
+    --speed-size:26px;
+    justify-self:end;min-width:var(--compass);padding:5px 10px 4px;
+    border-radius:14px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  body[data-presentation="map"][data-speedpos="compact"] #unitBtn{
+    margin:0;padding:1px 0 0;font-size:9.5px;letter-spacing:.12em}
+}
+
