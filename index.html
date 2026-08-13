@@ -88,8 +88,10 @@
       <div class="stat"><b id="stMax">0</b><span id="stMaxU">max km/u</span></div>
     </div>
     <div id="btnRow">
+      <select id="vehSel" aria-label="voertuig voor deze rit"></select>
       <button id="startBtn" class="btn go">Start rit</button>
       <button id="resetBtn" class="btn" disabled>Reset</button>
+      <button id="discardBtn" class="btn warn"></button>
     </div>
   </div>
   </div><!-- /#r-island -->
@@ -166,9 +168,25 @@
       <button id="gpxAllBtn" class="hbtn"></button>
       <input type="file" id="resFile" accept=".json,application/json" hidden>
     </div>
-    <div id="histTotals"></div>
-    <div id="histList"></div>
-    <p id="histEmpty"></p>
+    <div id="histTabs">
+      <button id="tabRides" class="on"></button><button id="tabStats"></button>
+    </div>
+
+    <div id="paneRides">
+      <div id="histTotals"></div>
+      <div id="histList"></div>
+      <p id="histEmpty"></p>
+    </div>
+
+    <div id="paneStats" hidden>
+      <div id="statVeh"></div>
+      <div id="statTotals"></div>
+      <h3 id="statWeeksTitle" class="statHead"></h3>
+      <div id="statWeeks"></div>
+      <h3 id="statRecordsTitle" class="statHead"></h3>
+      <div id="statRecords"></div>
+      <p id="statEmpty"></p>
+    </div>
   </div>
 </div>
 
@@ -214,6 +232,7 @@
       <button data-p="bike">Fiets</button>
       <button data-p="moped">Bromfiets</button>
       <button data-p="snor">Snorfiets</button>
+      <button data-p="foot">Te voet</button>
     </div>
   </div>
 

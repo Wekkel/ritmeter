@@ -42,6 +42,12 @@ function render(){
   $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
   $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
   $("resetBtn").disabled    = trip.running || !trip.ms;
+  /* Patch 28: weggooien is alleen zinvol als er iets te bewaren viel;
+     onder de 100 m doet Reset dat al. */
+  $("discardBtn").textContent = t("discard");
+  $("discardBtn").hidden      = trip.running || trip.dist < 100;
+  $("vehSel").hidden          = trip.running;
+  if ($("vehSel").value !== tripVeh) $("vehSel").value = tripVeh;
 
   /* hoogte & koers (uitlezing) */
   const napAlt = lastAltRaw == null ? null : lastAltRaw - altOffset;

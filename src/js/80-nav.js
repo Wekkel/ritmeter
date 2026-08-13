@@ -14,8 +14,10 @@ const BROUTER = "https://brouter.de/brouter";
 
 /* km/u: cap = realistische bovengrens, def = vaste schatting bij onbruikbare API-tijd */
 const SPEED = { car:{cap:140,def:60}, bike:{cap:35,def:18},
-                moped:{cap:50,def:40}, snor:{cap:30,def:25} };
+                moped:{cap:50,def:40}, snor:{cap:30,def:25},
+                foot:{cap:12,def:5} };
 function profileFor(mode){
+  if (mode === "foot") return "hiking-beta";   /* staat op brouter.de/brouter/profiles2/ */
   if (mode === "bike" || mode === "snor") return "trekking";
   return mode === "moped" ? "moped" : "car-fast";        // brom = moped, auto = car-fast
 }

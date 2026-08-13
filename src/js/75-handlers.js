@@ -37,8 +37,21 @@ $("modeBtn").onclick = () => {
   state.presentation = "big"; render(); if (map) setTimeout(() => map.resize(), 60);
 };
 $("r-exit").onclick  = () => { state.presentation = "map"; render(); ensureMotionLoop(); if (map) setTimeout(() => { map.resize(); applyMapPadding(); ensureMotionLoop(); }, 60); };
-$("startBtn").onclick = toggleTrip;
-$("resetBtn").onclick = saveAndReset;
+$("startBtn").onclick   = toggleTrip;
+$("resetBtn").onclick   = saveAndReset;
+$("discardBtn").onclick = discardTrip;
+
+/* Patch 28: voertuigkeuze voor DEZE rit. Raakt de instelling (en dus het
+   routeprofiel) bewust niet — je kunt met de fiets rijden terwijl de
+   navigatie op auto staat. */
+$("vehSel").onchange = e => {
+  tripVeh = logVeh(e.target.value) || logVeh(vehicle) || "bike";
+  LS.setItem("rm_tripveh", tripVeh);
+  render();
+};
+
+$("tabRides").onclick = () => showHistTab("rides");
+$("tabStats").onclick = () => showHistTab("stats");
 /* Patch 21: de km/u- en mph-knoppen in de instellingen hadden nooit een
    handler — daar zat de bug. #unitBtn in het eiland is nu alleen nog een
    label. Standaard blijft km/u: useMph is false tenzij rm_unit "mph" is. */

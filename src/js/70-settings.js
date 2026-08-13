@@ -7,6 +7,17 @@ function applyLang(){
   $("lblLang").textContent = t("lang");         $("dscLang").textContent = t("lang_d");
   $("lblUnit").textContent = t("unit");         $("dscUnit").textContent = t("unit_d");
   $("lblVeh").textContent = t("vehicle");       $("dscVeh").textContent = t("vehicle_d");
+  /* Patch 29/30: de rit-dropdown kent geen snorfiets — die valt onder
+     bromfiets. De instellingenknoppen (hieronder, bij de p_*-labels)
+     wél. Labels komen uit dezelfde p_*-sleutels als het navigatiemenu:
+     één bron, anders loopt het uiteen. */
+  $("vehSel").innerHTML = VEH_LOG.map(v =>
+    `<option value="${v}">${vehLabel(v)}</option>`).join("");
+  $("vehSel").value = tripVeh;
+  $("tabRides").textContent = t("tab_rides");
+  $("tabStats").textContent = t("tab_stats");
+  $("statWeeksTitle").textContent   = t("st_weeks");
+  $("statRecordsTitle").textContent = t("st_records");
   $("lblCompass").textContent = t("compass");   $("dscCompass").textContent = t("compass_d");
   $("lblSpeedVis").textContent = t("speedvis"); $("dscSpeedVis").textContent = t("speedvis_d");
   $("lblAltitude").textContent = t("altitude"); $("dscAltitude").textContent = t("altitude_d");
@@ -35,8 +46,11 @@ function applyLang(){
   $("rS").textContent = cd[4]; $("rW").textContent = cd[6];
   $("navSearch").placeholder = t("nav_search");
   $("navStart").textContent  = t("nav_start");
-  { const pv={car:t("p_car"),bike:t("p_bike"),moped:t("p_moped"),snor:t("p_snor")};
-    document.querySelectorAll("#vehSeg button").forEach(b => b.textContent = pv[b.dataset.p]); }
+  /* Patch 30: foot ontbrak hier, waardoor de knop "Te voet" leeg bleef.
+     Nu uit VEH zodat een nieuw voertuig niet opnieuw kan worden vergeten. */
+  document.querySelectorAll("#vehSeg button").forEach(b => {
+    b.textContent = vehLabel(b.dataset.p);
+  });
   if (typeof renderFavs === "function") renderFavs();
   syncSettingsUI(); render();
 }

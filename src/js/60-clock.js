@@ -60,13 +60,31 @@ function tripName(start){
   return d.toLocaleDateString(loc(), { day:"numeric", month:"short" }) + " " +
          d.toLocaleTimeString(loc(), { hour:"2-digit", minute:"2-digit" });
 }
+/* Patch 28: dezelfde opruiming als saveAndReset(), maar zonder opslaan.
+   Voor de korte proefritjes die je anders daarna uit de geschiedenis
+   moet gaan wissen. */
+function discardTrip(){
+  if (!confirm(t("discard_ask"))) return;
+  Object.assign(trip, { running:false, dist:0, ms:0, max:0, start:0, accSum:0, accN:0 });
+  route = []; lastSample = null;
+  resetTripLoss();
+  try{ LS.setItem("rm_trip", JSON.stringify(trip)); } catch(e){}
+  clearPersistedRoute();
+  clearTimeout(chromeTimer);
+  toast(t("discarded"));
+  render();
+  setTimeout(applyMapPadding, 60);
+}
+
 async function saveAndReset(){
   if (trip.dist >= 100){
     const rec = {
       id: trip.start || Date.now(), name: tripName(trip.start),
       start: trip.start || Date.now(), end: Date.now(),
       ms: trip.ms, dist: trip.dist, max: trip.max,
-      accAvg: trip.accN ? trip.accSum / trip.accN : null, points: route
+      accAvg: trip.accN ? trip.accSum / trip.accN : null, points: route,
+      veh: logVeh(tripVeh) || "bike"     /* Patch 28/29: expliciet gekozen,
+                                            altijd een log-categorie */
     };
     try { await idbPut(rec); toast(t("saved")); } catch(e){ console.error(e); }
   } else toast(t("cleared"));
