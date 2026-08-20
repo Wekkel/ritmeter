@@ -91,20 +91,34 @@
 .stat b{display:block;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:21px;
   font-variant-numeric:tabular-nums;color:var(--text)}
 .stat span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-#btnRow{display:flex;gap:10px;align-items:stretch}
+/* Patch 31: flex-wrap als vangnet. B (icoonknop) en C (kort label)
+   brengen de minimale rij van ~453 naar ~330 px, maar op een smal
+   toestel (iPhone SE: 317 px beschikbaar) is dat nog niet genoeg — en
+   breedtes zijn het enige dat ik niet in een test kan nameten. Met
+   wrap breekt de rij netjes af in plaats van buiten het eiland te
+   vallen, ongeacht taal, schermbreedte of --ui.
+   applyMapPadding() meet $("r-trip").offsetHeight, dus de kaartpadding
+   volgt een tweede regel vanzelf. */
+#btnRow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
 
 /* Patch 28: voertuigkeuze + weggooiknop in het riteiland.
    De select krijgt vaste breedte zodat de knoppen niet verspringen als
    je van "Fiets" naar "Bromfiets" wisselt. */
-#vehSel{flex:0 0 auto;width:104px;padding:0 10px;border-radius:13px;
+#vehSel{flex:0 0 auto;width:88px;padding:0 8px;border-radius:13px;
   border:1px solid var(--line);background:#141C25;color:var(--text);
   font-family:inherit;font-size:13px;font-weight:600;
   -webkit-appearance:none;appearance:none;text-align:center;text-align-last:center}
 #vehSel:focus{outline:none;border-color:var(--amber)}
 #vehSel[hidden]{display:none}
-#discardBtn{flex:0 0 auto;padding-left:14px;padding-right:14px;
-  background:#2A1313;border-color:#5c2727;color:#FF8A8A;font-size:14px}
+/* Patch 31: icoonknop in plaats van tekst. De rij bevatte vier
+   elementen waarvan er drie niet konden krimpen, waardoor "Weggooien"
+   buiten het eiland viel — in portret, liggend én op de head unit.
+   Vierkant en vast, zodat de breedte niet met de taal meebeweegt. */
+#discardBtn{flex:0 0 auto;width:52px;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:#2A1313;border-color:#5c2727;color:#FF8A8A}
 #discardBtn[hidden]{display:none}
+#discardBtn svg{display:block}
 .btn{flex:1;padding:13px 0;border-radius:13px;font-weight:700;font-size:16px;letter-spacing:.04em;
   border:1px solid var(--line);background:#141C25;transition:transform .06s}
 .btn:active{transform:scale(.97)}

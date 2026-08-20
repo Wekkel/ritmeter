@@ -40,12 +40,18 @@ function render(){
   $("stMaxU").textContent  = t("max") + " " + unitLbl();
   $("startBtn").textContent = trip.running ? t("stop") : (trip.ms ? t("resume") : t("start"));
   $("startBtn").className   = "btn " + (trip.running ? "halt" : "go");
-  $("resetBtn").textContent = trip.dist >= 100 ? t("save_reset") : t("reset");
+  /* Patch 31: met een weggooiknop ernaast spreekt de reset vanzelf, dus
+     "Opslaan & reset" mag inkorten tot "Opslaan". Scheelt ~90px in een
+     rij die anders over de rand van het eiland loopt. */
+  $("resetBtn").textContent = trip.dist >= 100 ? t("save") : t("reset");
   $("resetBtn").disabled    = trip.running || !trip.ms;
   /* Patch 28: weggooien is alleen zinvol als er iets te bewaren viel;
-     onder de 100 m doet Reset dat al. */
-  $("discardBtn").textContent = t("discard");
-  $("discardBtn").hidden      = trip.running || trip.dist < 100;
+     onder de 100 m doet Reset dat al.
+     Patch 31: de knop is een icoon geworden — textContent zou de SVG
+     wissen, dus het label zit nu in aria-label en title. */
+  $("discardBtn").title      = t("discard");
+  $("discardBtn").setAttribute("aria-label", t("discard"));
+  $("discardBtn").hidden     = trip.running || trip.dist < 100;
   $("vehSel").hidden          = trip.running;
   if ($("vehSel").value !== tripVeh) $("vehSel").value = tripVeh;
 

@@ -4,7 +4,7 @@ const I18N = {
   nl: {
     unit_kmh:"km/u", unit_mph:"mph", time:"tijd", dist:"afstand", avg:"gem", max:"max",
     start:"Start rit", stop:"Stop", resume:"Hervat", reset:"Reset",
-    save_reset:"Opslaan & reset", saved:"Rit opgeslagen", cleared:"Teller gereset",
+    save:"Opslaan", save_reset:"Opslaan & reset", saved:"Rit opgeslagen", cleared:"Teller gereset",
     alt:"hoogte", alt_nap:"hoogte NAP", alt_msl:"hoogte ≈ zeeniveau", hdg:"koers",
     nofix:"geen fix",
     set_title:"Instellingen", lang:"Taal", lang_d:"Taal van de app",
@@ -65,7 +65,7 @@ const I18N = {
   en: {
     unit_kmh:"km/h", unit_mph:"mph", time:"time", dist:"distance", avg:"avg", max:"max",
     start:"Start trip", stop:"Stop", resume:"Resume", reset:"Reset",
-    save_reset:"Save & reset", saved:"Trip saved", cleared:"Counter reset",
+    save:"Save", save_reset:"Save & reset", saved:"Trip saved", cleared:"Counter reset",
     alt:"altitude", alt_nap:"altitude NAP", alt_msl:"altitude ≈ MSL", hdg:"heading",
     nofix:"no fix",
     set_title:"Settings", lang:"Language", lang_d:"App language",

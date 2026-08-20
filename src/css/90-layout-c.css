@@ -64,6 +64,10 @@
     column-gap:calc(14px * var(--ui));row-gap:8px;margin-bottom:10px}
   #r-trip .stat b{font-size:calc(15px * var(--ui))}
   #r-trip .btn{padding-top:14px;padding-bottom:14px;font-size:calc(14px * var(--ui))}
+  /* Patch 31: icoonknop meeschalen met --ui, anders wordt hij hier
+     relatief piepklein naast de vergrote knopteksten. */
+  #r-trip #discardBtn{width:calc(52px * var(--ui));padding:0}
+  #r-trip #discardBtn svg{width:calc(19px * var(--ui));height:calc(19px * var(--ui))}
 
   /* Nav-eiland: rechts, opgetild van de bodem richting ~3/4
      schermhoogte. 16vh is de tunable voor de hoogte. */
